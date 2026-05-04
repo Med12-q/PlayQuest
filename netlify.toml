@@ -1,11 +1,10 @@
 [build]
-  command = "pnpm --filter @workspace/playquest run build"
+  command = "npm install -g pnpm@9 && pnpm install --no-frozen-lockfile --ignore-scripts && pnpm --filter @workspace/playquest run build"
   publish = "artifacts/playquest/dist/public"
 
 [build.environment]
   BASE_PATH = "/"
   NODE_ENV = "production"
-  PNPM_VERSION = "9"
 
 [[redirects]]
   from = "/*"
