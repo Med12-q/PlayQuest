@@ -1,0 +1,13 @@
+[build]
+  command = "pnpm --filter @workspace/playquest run build"
+  publish = "artifacts/playquest/dist/public"
+
+[build.environment]
+  BASE_PATH = "/"
+  NODE_ENV = "production"
+  PNPM_VERSION = "9"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
