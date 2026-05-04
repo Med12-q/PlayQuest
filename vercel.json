@@ -1,0 +1,9 @@
+{
+  "framework": null,
+  "installCommand": "echo 'deps handled in build'",
+  "buildCommand": "cd artifacts/playquest && npm install --legacy-peer-deps && npm run build",
+  "outputDirectory": "artifacts/playquest/dist/public",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
