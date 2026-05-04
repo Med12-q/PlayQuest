@@ -5,21 +5,12 @@ import path from "path";
 
 const rawPort = process.env.PORT;
 const port = rawPort ? Number(rawPort) : 3000;
-const basePath = process.env.BASE_PATH || "/";
 
 export default defineConfig({
-  base: basePath,
+  base: "/",
   plugins: [
     react(),
     tailwindcss(),
-    ...(process.env.NODE_ENV !== "production" && process.env.REPL_ID !== undefined
-      ? [
-          (await import("@replit/vite-plugin-runtime-error-modal")).default(),
-          await import("@replit/vite-plugin-cartographer").then((m) =>
-            m.cartographer({ root: path.resolve(import.meta.dirname, "..") })
-          ),
-        ]
-      : []),
   ],
   resolve: {
     alias: {
