@@ -1,6 +1,6 @@
 {
-  "buildCommand": "cd artifacts/playquest && npm install --legacy-peer-deps && npm run build",
-  "outputDirectory": "artifacts/playquest/dist/public",
+  "outputDirectory": "dist",
+  "buildCommand": "",
   "installCommand": "echo ok",
   "rewrites": [{ "source": "/:path*", "destination": "/index.html" }]
 }
