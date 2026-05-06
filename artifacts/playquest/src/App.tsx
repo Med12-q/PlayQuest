@@ -14,6 +14,9 @@ import ChatPage from "@/pages/chat";
 import NotificationsPage from "@/pages/notifications";
 import ProfilePage from "@/pages/profile";
 import SettingsPage from "@/pages/settings";
+import ReelsPage from "@/pages/reels";
+import MusicPage from "@/pages/music";
+import AIChatPage from "@/pages/ai-chat";
 
 initStore();
 
@@ -39,11 +42,14 @@ function Router() {
       <Route path="/register" component={() => <PublicRoute component={RegisterPage} />} />
       <Route path="/feed" component={() => <ProtectedRoute component={FeedPage} />} />
       <Route path="/explore" component={() => <ProtectedRoute component={ExplorePage} />} />
+      <Route path="/reels" component={() => <ProtectedRoute component={ReelsPage} />} />
+      <Route path="/music" component={() => <ProtectedRoute component={MusicPage} />} />
       <Route path="/messages" component={() => <ProtectedRoute component={MessagesPage} />} />
       <Route path="/chat" component={() => <ProtectedRoute component={ChatPage} />} />
       <Route path="/notifications" component={() => <ProtectedRoute component={NotificationsPage} />} />
       <Route path="/profile/:username" component={() => <ProtectedRoute component={ProfilePage} />} />
       <Route path="/settings" component={() => <ProtectedRoute component={SettingsPage} />} />
+      <Route path="/ai" component={() => <ProtectedRoute component={AIChatPage} />} />
       <Route component={NotFound} />
     </Switch>
   );
