@@ -283,9 +283,54 @@ export default function FeedPage() {
 
   const closeModal = () => { setShowNewPost(false); clearMedia(); setNewPostText(""); };
 
+  const triggerPhoto = () => {
+    if (fileInputRef.current) { fileInputRef.current.accept = "image/*"; fileInputRef.current.click(); }
+  };
+  const triggerVideo = () => {
+    if (fileInputRef.current) { fileInputRef.current.accept = "video/*"; fileInputRef.current.click(); }
+  };
+
   return (
     <Layout>
       <div className="max-w-[560px] mx-auto px-4 py-5">
+
+        {/* Create Post Bar */}
+        {currentUser && (
+          <div className="mb-5 rounded-2xl p-4" style={{ background: "rgba(15,15,22,0.95)", border: "1px solid rgba(255,255,255,0.06)" }}>
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ background: currentUser.avatarColor }}>
+                {getInitials(currentUser.username)}
+              </div>
+              <button onClick={() => setShowNewPost(true)} className="flex-1 text-left px-4 py-2.5 rounded-xl text-sm" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", color: "rgba(232,232,240,0.3)" }}>
+                Quoi de neuf, @{currentUser.username} ?
+              </button>
+            </div>
+            {/* BIG visible media buttons */}
+            <div className="grid grid-cols-2 gap-2">
+              <motion.button
+                whileHover={{ scale: 1.02, y: -1 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => { setShowNewPost(true); setTimeout(triggerPhoto, 120); }}
+                className="flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm"
+                style={{ background: "rgba(0,200,255,0.08)", border: "1.5px solid rgba(0,200,255,0.25)", color: "#00c8ff", boxShadow: "0 0 12px rgba(0,200,255,0.1)" }}
+              >
+                <Image className="w-5 h-5" />
+                📷 Photo / Galerie
+              </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.02, y: -1 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => { setShowNewPost(true); setTimeout(triggerVideo, 120); }}
+                className="flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm"
+                style={{ background: "rgba(232,16,42,0.08)", border: "1.5px solid rgba(232,16,42,0.28)", color: "#e8102a", boxShadow: "0 0 12px rgba(232,16,42,0.1)" }}
+              >
+                <Video className="w-5 h-5" />
+                🎬 Vidéo
+              </motion.button>
+            </div>
+          </div>
+        )}
+
         {/* Stories */}
         <div className="mb-5">
           <div className="flex gap-3.5 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
@@ -294,7 +339,7 @@ export default function FeedPage() {
                 <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: "rgba(232,16,42,0.06)", border: "1.5px dashed rgba(232,16,42,0.35)" }}>
                   <Plus className="w-5 h-5 text-[#e8102a]/70" />
                 </div>
-                <span className="text-[10px] text-[#e8e8f0]/35">Publier</span>
+                <span className="text-[10px] text-[#e8e8f0]/35">Story</span>
               </motion.button>
             )}
             {stories.map(s => (
