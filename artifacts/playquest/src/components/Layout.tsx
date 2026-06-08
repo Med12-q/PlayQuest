@@ -135,16 +135,18 @@ export default function Layout({ children }: { children: ReactNode }) {
                 </div>
               </motion.div>
             </Link>
-            <button
+            <motion.button
               onClick={logout}
-              className="flex items-center gap-2 px-2.5 py-2 w-full rounded-xl text-xs transition-all"
-              style={{ color: "rgba(232,232,240,0.25)" }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#e8102a"; (e.currentTarget as HTMLElement).style.background = "rgba(232,16,42,0.06)"; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "rgba(232,232,240,0.25)"; (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.97 }}
+              className="flex items-center gap-2.5 px-3 py-2.5 w-full rounded-xl text-xs font-semibold transition-all mt-1"
+              style={{ background: "rgba(232,16,42,0.1)", color: "rgba(232,16,42,0.7)", border: "1px solid rgba(232,16,42,0.15)" }}
+              onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.background = "rgba(232,16,42,0.18)"; el.style.color = "#e8102a"; el.style.borderColor = "rgba(232,16,42,0.35)"; el.style.boxShadow = "0 0 16px rgba(232,16,42,0.15)"; }}
+              onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.background = "rgba(232,16,42,0.1)"; el.style.color = "rgba(232,16,42,0.7)"; el.style.borderColor = "rgba(232,16,42,0.15)"; el.style.boxShadow = "none"; }}
             >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>Déconnexion</span>
-            </button>
+              <LogOut className="w-3.5 h-3.5 flex-shrink-0" />
+              <span>Se déconnecter</span>
+            </motion.button>
           </div>
         )}
       </aside>
