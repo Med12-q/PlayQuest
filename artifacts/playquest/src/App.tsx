@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { initStore } from "@/lib/store";
 import NotFound from "@/pages/not-found";
+import LandingPage from "@/pages/landing";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import FeedPage from "@/pages/feed";
@@ -17,6 +18,7 @@ import SettingsPage from "@/pages/settings";
 import ReelsPage from "@/pages/reels";
 import MusicPage from "@/pages/music";
 import AIChatPage from "@/pages/ai-chat";
+import DashboardPage from "@/pages/dashboard";
 
 initStore();
 
@@ -28,6 +30,12 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   return <Component />;
 }
 
+function HomeRoute() {
+  const { currentUser } = useAuth();
+  if (currentUser) return <Redirect to="/feed" />;
+  return <LandingPage />;
+}
+
 function PublicRoute({ component: Component }: { component: React.ComponentType }) {
   const { currentUser } = useAuth();
   if (currentUser) return <Redirect to="/feed" />;
@@ -37,10 +45,11 @@ function PublicRoute({ component: Component }: { component: React.ComponentType 
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={() => { const { currentUser } = useAuth(); return currentUser ? <Redirect to="/feed" /> : <Redirect to="/login" />; }} />
+      <Route path="/" component={HomeRoute} />
       <Route path="/login" component={() => <PublicRoute component={LoginPage} />} />
       <Route path="/register" component={() => <PublicRoute component={RegisterPage} />} />
       <Route path="/feed" component={() => <ProtectedRoute component={FeedPage} />} />
+      <Route path="/dashboard" component={() => <ProtectedRoute component={DashboardPage} />} />
       <Route path="/explore" component={() => <ProtectedRoute component={ExplorePage} />} />
       <Route path="/reels" component={() => <ProtectedRoute component={ReelsPage} />} />
       <Route path="/music" component={() => <ProtectedRoute component={MusicPage} />} />
