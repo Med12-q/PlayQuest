@@ -1,11 +1,12 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { Link } from "wouter";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Heart, MessageCircle, Share2, Bookmark, Plus, X, Send, Image, Video, Film } from "lucide-react";
+import { Heart, MessageCircle, Share2, Bookmark, Plus, Image, Video, X, Send, MoreHorizontal, Zap, TrendingUp } from "lucide-react";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
-import { store, Post, Story, Comment } from "@/lib/store";
-import { getInitials, formatTimeAgo, generateId } from "@/lib/utils";
+import { store, Post, User } from "@/lib/store";
+import { getInitials, formatTimeAgo } from "@/lib/utils";
+
+interface PostWithUser extends Post { user: User | null; liked: boolean; }
 
 function compressImage(file: File, maxWidth = 900, quality = 0.82): Promise<string> {
   return new Promise((resolve) => {
@@ -16,8 +17,7 @@ function compressImage(file: File, maxWidth = 900, quality = 0.82): Promise<stri
         const canvas = document.createElement("canvas");
         let { width, height } = img;
         if (width > maxWidth) { height = (height * maxWidth) / width; width = maxWidth; }
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = width; canvas.height = height;
         canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
         resolve(canvas.toDataURL("image/jpeg", quality));
       };
@@ -27,427 +27,293 @@ function compressImage(file: File, maxWidth = 900, quality = 0.82): Promise<stri
   });
 }
 
-const videoBlobs = new Map<string, string>();
-
-function StoryBubble({ story, onView }: { story: Story; onView: () => void }) {
-  const user = store.getUserById(story.userId);
-  if (!user) return null;
+function StoryCircle({ user, isOwn }: { user: User; isOwn?: boolean }) {
   return (
-    <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={onView} className="flex flex-col items-center gap-1.5 flex-shrink-0">
-      <div className="w-14 h-14 rounded-full p-[2px]" style={{ background: story.gradient }}>
-        <div className="w-full h-full rounded-full flex items-center justify-center text-sm font-bold text-white bg-[#0a0a0f]">
-          <div className="w-11 h-11 rounded-full flex items-center justify-center text-sm font-bold text-white" style={{ background: user.avatarColor }}>
-            {getInitials(user.username)}
+    <motion.div whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.94 }} className="flex flex-col items-center gap-1.5 cursor-pointer flex-shrink-0">
+      <div className="relative">
+        <div className="w-14 h-14 rounded-2xl p-[2px]" style={{ background: isOwn ? "rgba(255,255,255,0.07)" : `linear-gradient(135deg,${user.avatarColor},#00c8ff)` }}>
+          <div className="w-full h-full rounded-[10px] flex items-center justify-center font-bold text-white text-base" style={{ background: isOwn ? "rgba(12,12,20,0.95)" : user.avatarColor }}>
+            {isOwn ? <Plus className="w-5 h-5 text-[#e8e8f0]/40" /> : getInitials(user.username)}
           </div>
         </div>
+        {!isOwn && (
+          <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#06060d]" style={{ background: "#39ff14", boxShadow: "0 0 6px rgba(57,255,20,0.8)" }} />
+        )}
       </div>
-      <span className="text-[10px] text-[#e8e8f0]/50 max-w-[56px] truncate">@{user.username}</span>
-    </motion.button>
-  );
-}
-
-function StoryViewer({ story, onClose }: { story: Story; onClose: () => void }) {
-  const user = store.getUserById(story.userId);
-  useEffect(() => { const t = setTimeout(onClose, 5000); return () => clearTimeout(t); }, [onClose]);
-  return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.92)" }} onClick={onClose}>
-      <motion.div initial={{ scale: 0.92 }} animate={{ scale: 1 }} exit={{ scale: 0.92 }} className="relative w-full max-w-xs mx-4 aspect-[9/16] rounded-3xl overflow-hidden" style={{ background: story.gradient }} onClick={e => e.stopPropagation()}>
-        <div className="absolute top-3 left-3 right-3 h-0.5 bg-white/20 rounded-full">
-          <motion.div initial={{ width: 0 }} animate={{ width: "100%" }} transition={{ duration: 5, ease: "linear" }} className="h-full bg-white rounded-full" />
-        </div>
-        <div className="absolute top-6 left-4 right-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ background: user?.avatarColor }}>{getInitials(user?.username || "")}</div>
-            <span className="text-white text-sm font-semibold">@{user?.username}</span>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center"><X className="w-4 h-4 text-white" /></button>
-        </div>
-        <div className="absolute inset-0 flex items-center justify-center px-8">
-          <p className="text-white text-2xl font-bold text-center leading-snug">{story.content}</p>
-        </div>
-      </motion.div>
+      <span className="text-[10px] text-[#e8e8f0]/40 font-medium truncate max-w-[56px] text-center">
+        {isOwn ? "Ma story" : `@${user.username.slice(0,6)}`}
+      </span>
     </motion.div>
   );
 }
 
-function PostCard({ post, onUpdate }: { post: Post; onUpdate: () => void }) {
-  const { currentUser } = useAuth();
-  const user = store.getUserById(post.userId);
-  const [liked, setLiked] = useState(currentUser ? store.isLiked(post.id, currentUser.id) : false);
-  const [likesCount, setLikesCount] = useState(post.likesCount);
-  const [bookmarked, setBookmarked] = useState(false);
-  const [showComments, setShowComments] = useState(false);
-  const [comments, setComments] = useState<Comment[]>([]);
+function PostCard({ post, onLike, onComment }: { post: PostWithUser; onLike: (id: string) => void; onComment: (id: string, text: string) => void }) {
   const [commentText, setCommentText] = useState("");
-  const [showHeart, setShowHeart] = useState(false);
+  const [showComments, setShowComments] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [comments, setComments] = useState(store.getComments(post.id));
 
-  const handleLike = () => {
-    if (!currentUser) return;
-    const newLiked = store.toggleLike(post.id, currentUser.id);
-    setLiked(newLiked);
-    setLikesCount(prev => newLiked ? prev + 1 : prev - 1);
-    if (newLiked) { setShowHeart(true); setTimeout(() => setShowHeart(false), 900); }
-  };
-
-  const toggleComments = () => {
-    if (!showComments) setComments(store.getComments(post.id));
-    setShowComments(!showComments);
-  };
-
-  const submitComment = () => {
-    if (!currentUser || !commentText.trim()) return;
-    const c: Comment = { id: generateId(), postId: post.id, userId: currentUser.id, content: commentText.trim(), createdAt: new Date().toISOString() };
-    store.addComment(c);
-    setComments(prev => [...prev, c]);
+  const handleComment = () => {
+    const text = commentText.trim();
+    if (!text) return;
+    onComment(post.id, text);
+    setComments(store.getComments(post.id));
     setCommentText("");
-    onUpdate();
   };
-
-  if (!user) return null;
-
-  const videoSrc = post.mediaType === "video" ? videoBlobs.get(post.id) : null;
 
   return (
-    <motion.article initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl overflow-hidden mb-3" style={{ background: "rgba(15,15,22,0.9)", border: "1px solid rgba(255,255,255,0.05)" }}>
+    <motion.div layout initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl overflow-hidden" style={{ background: "rgba(11,11,18,0.92)", border: "1px solid rgba(255,255,255,0.05)", backdropFilter: "blur(12px)" }}>
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 pt-4 pb-3">
-        <Link to={`/profile/${user.username}`} className="flex items-center gap-3 flex-1 min-w-0">
-          <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ background: user.avatarColor }}>
-            {getInitials(user.username)}
+      <div className="flex items-center gap-3 p-4 pb-3">
+        <div className="relative">
+          <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white" style={{ background: post.user?.avatarColor || "#444", boxShadow: `0 0 14px ${post.user?.avatarColor || "#444"}55` }}>
+            {getInitials(post.user?.username || "?")}
           </div>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-[#e8e8f0] truncate">@{user.username}</p>
-            <p className="text-[11px] text-[#e8e8f0]/35">{formatTimeAgo(post.createdAt)}</p>
-          </div>
-        </Link>
-      </div>
-
-      {/* Media */}
-      <div className="relative cursor-pointer" onDoubleClick={handleLike}>
-        {post.mediaType === "image" && post.mediaUrl ? (
-          <img src={post.mediaUrl} alt="post" className="w-full object-cover" style={{ maxHeight: "400px", background: "#111" }} />
-        ) : post.mediaType === "video" && videoSrc ? (
-          <video src={videoSrc} controls className="w-full" style={{ maxHeight: "400px", background: "#111" }} />
-        ) : post.mediaType === "video" && !videoSrc ? (
-          <div className="w-full h-52 flex flex-col items-center justify-center gap-2" style={{ background: "linear-gradient(135deg, rgba(232,16,42,0.08), rgba(0,200,255,0.08))" }}>
-            <Film className="w-10 h-10 text-[#e8e8f0]/20" />
-            <p className="text-xs text-[#e8e8f0]/30">Vidéo — rechargez pour visionner</p>
-          </div>
-        ) : (
-          <div className="w-full h-56" style={{ background: post.imageGradient || "linear-gradient(135deg, #1a1a2e, #16213e)" }} />
-        )}
-        <AnimatePresence>
-          {showHeart && (
-            <motion.div initial={{ scale: 0, opacity: 1 }} animate={{ scale: 1.4, opacity: 0 }} transition={{ duration: 0.8 }} className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <Heart className="w-20 h-20 text-[#e8102a]" fill="#e8102a" style={{ filter: "drop-shadow(0 0 20px rgba(232,16,42,0.9))" }} />
-            </motion.div>
-          )}
-        </AnimatePresence>
+          <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#0b0b12]" style={{ background: "#39ff14", boxShadow: "0 0 6px rgba(57,255,20,0.7)" }} />
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-[#e8e8f0]">@{post.user?.username}</p>
+          <p className="text-[11px] text-[#e8e8f0]/35">{formatTimeAgo(post.createdAt)}</p>
+        </div>
+        <button className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-white/5 transition-colors">
+          <MoreHorizontal className="w-4 h-4 text-[#e8e8f0]/25" />
+        </button>
       </div>
 
       {/* Content */}
-      <div className="px-4 pb-4 pt-3">
-        <p className="text-sm text-[#e8e8f0]/85 mb-2 leading-relaxed">{post.content}</p>
-        {post.hashtags && post.hashtags.length > 0 && (
-          <div className="flex flex-wrap gap-1 mb-3">
-            {post.hashtags.map(tag => <span key={tag} className="text-xs text-[#00c8ff]/60">{tag}</span>)}
-          </div>
+      <div className="px-4 pb-3">
+        <p className="text-sm text-[#e8e8f0]/80 leading-relaxed">{post.content}</p>
+        {post.hashtags?.length > 0 && (
+          <p className="text-xs mt-1.5">
+            {post.hashtags.map(h => <span key={h} className="text-[#00c8ff] mr-1.5 hover:underline cursor-pointer">#{h}</span>)}
+          </p>
         )}
+      </div>
 
-        {/* Actions */}
-        <div className="flex items-center justify-between pt-1">
-          <div className="flex items-center gap-5">
-            <motion.button whileTap={{ scale: 0.75 }} onClick={handleLike} className="flex items-center gap-1.5 transition-all">
-              <Heart className="w-5 h-5" fill={liked ? "#e8102a" : "none"} strokeWidth={1.8} style={{ color: liked ? "#e8102a" : "rgba(232,232,240,0.4)", filter: liked ? "drop-shadow(0 0 6px rgba(232,16,42,0.7))" : "none" }} />
-              <span className="text-xs font-medium" style={{ color: liked ? "#e8102a" : "rgba(232,232,240,0.4)" }}>{likesCount.toLocaleString()}</span>
-            </motion.button>
+      {/* Image */}
+      {post.imageUrl && (
+        <div className="mx-4 mb-3 rounded-xl overflow-hidden">
+          <img src={post.imageUrl} alt="" className="w-full object-cover max-h-80" />
+        </div>
+      )}
 
-            <button onClick={toggleComments} className="flex items-center gap-1.5 text-[#e8e8f0]/40 hover:text-[#00c8ff] transition-colors">
-              <MessageCircle className="w-5 h-5" strokeWidth={1.8} />
-              <span className="text-xs font-medium">{post.commentsCount}</span>
-            </button>
-
-            <button className="text-[#e8e8f0]/40 hover:text-[#00c8ff] transition-colors">
-              <Share2 className="w-5 h-5" strokeWidth={1.8} />
-            </button>
-          </div>
-
-          <motion.button whileTap={{ scale: 0.75 }} onClick={() => setBookmarked(!bookmarked)}>
-            <Bookmark className="w-5 h-5" fill={bookmarked ? "#00c8ff" : "none"} strokeWidth={1.8} style={{ color: bookmarked ? "#00c8ff" : "rgba(232,232,240,0.4)", filter: bookmarked ? "drop-shadow(0 0 6px rgba(0,200,255,0.7))" : "none" }} />
+      {/* Actions */}
+      <div className="flex items-center justify-between px-4 py-3 border-t" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
+        <div className="flex items-center gap-5">
+          <motion.button whileTap={{ scale: 0.82 }} onClick={() => onLike(post.id)} className="flex items-center gap-1.5 group">
+            <Heart className={`w-4.5 h-4.5 transition-all ${post.liked ? "fill-[#e8102a] text-[#e8102a]" : "text-[#e8e8f0]/30 group-hover:text-[#e8102a]"}`} style={post.liked ? { filter: "drop-shadow(0 0 6px rgba(232,16,42,0.7))" } : {}} />
+            <span className={`text-xs font-medium ${post.liked ? "text-[#e8102a]" : "text-[#e8e8f0]/30"}`}>{post.likesCount}</span>
+          </motion.button>
+          <motion.button whileTap={{ scale: 0.82 }} onClick={() => setShowComments(s => !s)} className="flex items-center gap-1.5 group">
+            <MessageCircle className={`w-4.5 h-4.5 transition-all ${showComments ? "text-[#00c8ff]" : "text-[#e8e8f0]/30 group-hover:text-[#00c8ff]"}`} />
+            <span className="text-xs font-medium text-[#e8e8f0]/30">{comments.length}</span>
+          </motion.button>
+          <motion.button whileTap={{ scale: 0.82 }} className="group">
+            <Share2 className="w-4.5 h-4.5 text-[#e8e8f0]/30 group-hover:text-[#39ff14] transition-colors" />
           </motion.button>
         </div>
-
-        <AnimatePresence>
-          {showComments && (
-            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden mt-3 pt-3 border-t" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
-              <div className="space-y-2.5 mb-3 max-h-44 overflow-y-auto">
-                {comments.length === 0 && <p className="text-xs text-[#e8e8f0]/30">Aucun commentaire. Soyez le premier !</p>}
-                {comments.map(c => {
-                  const cu = store.getUserById(c.userId);
-                  return (
-                    <div key={c.id} className="flex gap-2">
-                      <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0" style={{ background: cu?.avatarColor || "#444" }}>{getInitials(cu?.username || "?")}</div>
-                      <div>
-                        <span className="text-xs font-semibold text-[#e8e8f0]/70">@{cu?.username} </span>
-                        <span className="text-xs text-[#e8e8f0]/55">{c.content}</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              {currentUser && (
-                <div className="flex gap-2">
-                  <input value={commentText} onChange={e => setCommentText(e.target.value)} onKeyDown={e => e.key === "Enter" && submitComment()} placeholder="Ajouter un commentaire..." className="flex-1 px-3 py-2 rounded-xl text-xs outline-none" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", color: "#e8e8f0" }} />
-                  <button onClick={submitComment} className="px-3 py-2 rounded-xl" style={{ background: "#e8102a" }}><Send className="w-3 h-3 text-white" /></button>
-                </div>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <motion.button whileTap={{ scale: 0.82 }} onClick={() => setSaved(s => !s)}>
+          <Bookmark className={`w-4.5 h-4.5 transition-colors ${saved ? "fill-[#ff9900] text-[#ff9900]" : "text-[#e8e8f0]/30 hover:text-[#ff9900]"}`} />
+        </motion.button>
       </div>
-    </motion.article>
+
+      {/* Comments section */}
+      <AnimatePresence>
+        {showComments && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+            <div className="px-4 pb-3 space-y-2.5 max-h-44 overflow-y-auto">
+              {comments.length === 0 && (
+                <p className="text-xs text-center text-[#e8e8f0]/25 py-3">Sois le premier à commenter ✦</p>
+              )}
+              {comments.map((c, i) => {
+                const cu = store.getUserById(c.userId);
+                return (
+                  <div key={i} className="flex gap-2.5">
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0" style={{ background: cu?.avatarColor || "#444" }}>
+                      {getInitials(cu?.username || "?")}
+                    </div>
+                    <div className="flex-1 rounded-xl px-2.5 py-1.5" style={{ background: "rgba(255,255,255,0.04)" }}>
+                      <span className="text-xs font-semibold text-[#e8e8f0]/65 mr-1.5">@{cu?.username}</span>
+                      <span className="text-xs text-[#e8e8f0]/50">{c.content}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="px-4 pb-3 flex gap-2">
+              <input value={commentText} onChange={e => setCommentText(e.target.value)} onKeyDown={e => e.key === "Enter" && handleComment()} placeholder="Ajouter un commentaire…" className="flex-1 text-xs bg-white/5 border border-white/5 rounded-xl px-3 py-2 text-[#e8e8f0] placeholder:text-[#e8e8f0]/20 outline-none focus:border-[#e8102a]/40 transition-colors" />
+              <motion.button whileTap={{ scale: 0.9 }} onClick={handleComment} className="w-8 h-8 flex items-center justify-center rounded-xl flex-shrink-0" style={{ background: commentText ? "rgba(232,16,42,0.15)" : "rgba(255,255,255,0.04)" }}>
+                <Send className="w-3.5 h-3.5" style={{ color: commentText ? "#e8102a" : "#e8e8f0" }} />
+              </motion.button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   );
 }
 
 export default function FeedPage() {
   const { currentUser } = useAuth();
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [stories, setStories] = useState<Story[]>([]);
-  const [activeStory, setActiveStory] = useState<Story | null>(null);
+  const [posts, setPosts] = useState<PostWithUser[]>([]);
+  const [stories, setStories] = useState<User[]>([]);
   const [showNewPost, setShowNewPost] = useState(false);
-  const [newPostText, setNewPostText] = useState("");
-  const [mediaPreview, setMediaPreview] = useState<string | null>(null);
-  const [mediaFile, setMediaFile] = useState<File | null>(null);
-  const [mediaType, setMediaType] = useState<"image" | "video" | null>(null);
-  const [publishing, setPublishing] = useState(false);
+  const [newContent, setNewContent] = useState("");
+  const [newImage, setNewImage] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
-  const loadData = useCallback(() => { setPosts(store.getPosts()); setStories(store.getStories()); }, []);
-  useEffect(() => { loadData(); }, [loadData]);
+  const loadPosts = () => {
+    const all = store.getPosts();
+    setPosts(all.map(p => ({ ...p, user: store.getUserById(p.userId), liked: currentUser ? store.isLiked(currentUser.id, p.id) : false })));
+  };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  useEffect(() => {
+    loadPosts();
+    const allUsers = store.getUsers();
+    setStories(allUsers.filter(u => u.id !== currentUser?.id).slice(0, 6));
+  }, [currentUser]);
+
+  const handleLike = (postId: string) => {
+    if (!currentUser) return;
+    store.toggleLike(currentUser.id, postId);
+    loadPosts();
+  };
+
+  const handleComment = (postId: string, text: string) => {
+    if (!currentUser) return;
+    store.addComment({ userId: currentUser.id, postId, content: text });
+    loadPosts();
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const type = file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : null;
-    if (!type) return;
-    setMediaType(type);
-    setMediaFile(file);
-    setMediaPreview(URL.createObjectURL(file));
-  };
-
-  const clearMedia = () => {
-    setMediaPreview(null);
-    setMediaFile(null);
-    setMediaType(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
-
-  const submitPost = async () => {
-    if (!currentUser || !newPostText.trim()) return;
-    setPublishing(true);
-
-    let mediaUrl: string | undefined;
-    let finalMediaType: "image" | "video" | undefined;
-
-    if (mediaFile && mediaType === "image") {
-      mediaUrl = await compressImage(mediaFile);
-      finalMediaType = "image";
-    } else if (mediaFile && mediaType === "video" && mediaPreview) {
-      finalMediaType = "video";
+    try {
+      const compressed = await compressImage(file);
+      setNewImage(compressed);
+      setShowNewPost(true);
+    } catch {
+      const reader = new FileReader();
+      reader.onload = ev => { setNewImage(ev.target?.result as string); setShowNewPost(true); };
+      reader.readAsDataURL(file);
     }
-
-    const post: Post = {
-      id: generateId(),
-      userId: currentUser.id,
-      content: newPostText.trim(),
-      mediaUrl,
-      mediaType: finalMediaType,
-      imageGradient: finalMediaType ? undefined : "linear-gradient(135deg, #e8102a, #c8001f)",
-      createdAt: new Date().toISOString(),
-      likesCount: 0,
-      commentsCount: 0,
-      hashtags: [],
-    };
-
-    if (finalMediaType === "video" && mediaPreview) {
-      videoBlobs.set(post.id, mediaPreview);
-    }
-
-    store.savePost(post);
-    setNewPostText("");
-    clearMedia();
-    setShowNewPost(false);
-    setPublishing(false);
-    loadData();
+    e.target.value = "";
   };
 
-  const closeModal = () => { setShowNewPost(false); clearMedia(); setNewPostText(""); };
+  const submitPost = () => {
+    if (!currentUser || (!newContent.trim() && !newImage)) return;
+    setSubmitting(true);
+    setTimeout(() => {
+      store.addPost({ userId: currentUser.id, content: newContent.trim() || "✦", imageUrl: newImage || undefined, hashtags: [] });
+      setNewContent(""); setNewImage(null); setShowNewPost(false); setSubmitting(false);
+      loadPosts();
+    }, 400);
+  };
 
-  const triggerPhoto = () => {
-    if (fileInputRef.current) { fileInputRef.current.accept = "image/*"; fileInputRef.current.click(); }
-  };
-  const triggerVideo = () => {
-    if (fileInputRef.current) { fileInputRef.current.accept = "video/*"; fileInputRef.current.click(); }
-  };
+  if (!currentUser) return null;
 
   return (
     <Layout>
-      <div className="max-w-[560px] mx-auto px-4 py-5">
+      <div className="min-h-screen" style={{ background: "linear-gradient(180deg,#06060d 0%,#080812 100%)" }}>
+        <div className="max-w-xl mx-auto px-4 py-5 pb-24">
 
-        {/* Create Post Bar */}
-        {currentUser && (
-          <div className="mb-5 rounded-2xl p-4" style={{ background: "rgba(15,15,22,0.95)", border: "1px solid rgba(255,255,255,0.06)" }}>
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ background: currentUser.avatarColor }}>
-                {getInitials(currentUser.username)}
-              </div>
-              <button onClick={() => setShowNewPost(true)} className="flex-1 text-left px-4 py-2.5 rounded-xl text-sm" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", color: "rgba(232,232,240,0.3)" }}>
-                Quoi de neuf, @{currentUser.username} ?
-              </button>
+          {/* Header */}
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <h1 className="text-xl font-black" style={{ fontFamily: "'Space Grotesk',sans-serif", background: "linear-gradient(135deg,#e8102a,#00c8ff)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Feed</h1>
+              <p className="text-[11px] text-[#e8e8f0]/28 mt-0.5 flex items-center gap-1">
+                <TrendingUp className="w-3 h-3 text-[#39ff14]" /> Tendances du moment
+              </p>
             </div>
-            {/* BIG visible media buttons */}
-            <div className="grid grid-cols-2 gap-2">
-              <motion.button
-                whileHover={{ scale: 1.02, y: -1 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={() => { setShowNewPost(true); setTimeout(triggerPhoto, 120); }}
-                className="flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm"
-                style={{ background: "rgba(0,200,255,0.08)", border: "1.5px solid rgba(0,200,255,0.25)", color: "#00c8ff", boxShadow: "0 0 12px rgba(0,200,255,0.1)" }}
-              >
-                <Image className="w-5 h-5" />
-                📷 Photo / Galerie
+            <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ background: currentUser.avatarColor, boxShadow: `0 0 14px ${currentUser.avatarColor}70` }}>
+              {getInitials(currentUser.username)}
+            </div>
+          </div>
+
+          {/* Stories */}
+          <div className="mb-5">
+            <div className="flex gap-3 overflow-x-auto pb-2" style={{ scrollbarWidth: "none" }}>
+              {currentUser && <StoryCircle user={currentUser} isOwn />}
+              {stories.map(u => <StoryCircle key={u.id} user={u} />)}
+            </div>
+          </div>
+
+          {/* Compose bar */}
+          <div className="mb-5 p-3.5 rounded-2xl flex items-center gap-3" style={{ background: "rgba(11,11,18,0.92)", border: "1px solid rgba(255,255,255,0.05)" }}>
+            <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ background: currentUser.avatarColor }}>
+              {getInitials(currentUser.username)}
+            </div>
+            <motion.div whileTap={{ scale: 0.99 }} className="flex-1 text-sm text-[#e8e8f0]/25 cursor-pointer py-2 px-3 rounded-xl" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.04)" }} onClick={() => setShowNewPost(true)}>
+              Quoi de neuf, @{currentUser.username} ?
+            </motion.div>
+            <div className="flex gap-2">
+              <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} className="hidden" />
+              <input ref={videoInputRef} type="file" accept="video/*" onChange={handleFileSelect} className="hidden" />
+              <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => fileInputRef.current?.click()} className="w-9 h-9 flex items-center justify-center rounded-xl flex-shrink-0" style={{ background: "rgba(0,200,255,0.08)", border: "1px solid rgba(0,200,255,0.2)" }}>
+                <Image className="w-4 h-4 text-[#00c8ff]" />
               </motion.button>
-              <motion.button
-                whileHover={{ scale: 1.02, y: -1 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={() => { setShowNewPost(true); setTimeout(triggerVideo, 120); }}
-                className="flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm"
-                style={{ background: "rgba(232,16,42,0.08)", border: "1.5px solid rgba(232,16,42,0.28)", color: "#e8102a", boxShadow: "0 0 12px rgba(232,16,42,0.1)" }}
-              >
-                <Video className="w-5 h-5" />
-                🎬 Vidéo
+              <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => videoInputRef.current?.click()} className="w-9 h-9 flex items-center justify-center rounded-xl flex-shrink-0" style={{ background: "rgba(232,16,42,0.08)", border: "1px solid rgba(232,16,42,0.2)" }}>
+                <Video className="w-4 h-4 text-[#e8102a]" />
               </motion.button>
             </div>
           </div>
-        )}
 
-        {/* Stories */}
-        <div className="mb-5">
-          <div className="flex gap-3.5 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
-            {currentUser && (
-              <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} onClick={() => setShowNewPost(true)} className="flex flex-col items-center gap-1.5 flex-shrink-0">
-                <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: "rgba(232,16,42,0.06)", border: "1.5px dashed rgba(232,16,42,0.35)" }}>
-                  <Plus className="w-5 h-5 text-[#e8102a]/70" />
-                </div>
-                <span className="text-[10px] text-[#e8e8f0]/35">Story</span>
-              </motion.button>
-            )}
-            {stories.map(s => (
-              <StoryBubble key={s.id} story={s} onView={() => { store.markStoryViewed(s.id, currentUser?.id || ""); setActiveStory(s); }} />
-            ))}
-          </div>
-        </div>
-
-        {/* Feed */}
-        <div>
-          {posts.map(post => <PostCard key={post.id} post={post} onUpdate={loadData} />)}
-        </div>
-      </div>
-
-      <AnimatePresence>{activeStory && <StoryViewer story={activeStory} onClose={() => setActiveStory(null)} />}</AnimatePresence>
-
-      {/* New post modal */}
-      <AnimatePresence>
-        {showNewPost && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(12px)" }} onClick={closeModal}>
-            <motion.div initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 40, opacity: 0 }} transition={{ type: "spring", damping: 28, stiffness: 350 }} className="w-full max-w-md rounded-2xl overflow-hidden" style={{ background: "#0e0e16", border: "1px solid rgba(255,255,255,0.07)" }} onClick={e => e.stopPropagation()}>
-              {/* Modal header */}
-              <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
-                <h3 className="text-base font-bold text-[#e8e8f0]">Nouvelle publication</h3>
-                <button onClick={closeModal} className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-white/05 transition-all"><X className="w-4 h-4 text-[#e8e8f0]/50" /></button>
-              </div>
-
-              <div className="p-5 space-y-4">
-                {currentUser && (
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ background: currentUser.avatarColor }}>{getInitials(currentUser.username)}</div>
-                    <span className="text-sm font-medium text-[#e8e8f0]">@{currentUser.username}</span>
-                  </div>
-                )}
-
-                <textarea
-                  value={newPostText}
-                  onChange={e => setNewPostText(e.target.value)}
-                  placeholder="Quoi de neuf ? Partagez avec la communauté..."
-                  rows={3}
-                  className="w-full px-0 py-0 text-sm outline-none resize-none bg-transparent text-[#e8e8f0] placeholder:text-[#e8e8f0]/25 leading-relaxed"
-                  style={{ minHeight: "72px" }}
-                />
-
-                {/* Media preview */}
-                {mediaPreview && (
-                  <div className="relative rounded-xl overflow-hidden">
-                    {mediaType === "image" ? (
-                      <img src={mediaPreview} alt="preview" className="w-full object-cover rounded-xl" style={{ maxHeight: "240px" }} />
-                    ) : (
-                      <video src={mediaPreview} controls className="w-full rounded-xl" style={{ maxHeight: "240px" }} />
-                    )}
-                    <button onClick={clearMedia} className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.7)" }}>
-                      <X className="w-3.5 h-3.5 text-white" />
+          {/* New post modal */}
+          <AnimatePresence>
+            {showNewPost && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.8)", backdropFilter: "blur(8px)" }}>
+                <motion.div initial={{ y: 60, opacity: 0, scale: 0.97 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 40, opacity: 0, scale: 0.97 }} className="w-full max-w-md rounded-3xl p-5" style={{ background: "rgba(10,10,16,0.99)", border: "1px solid rgba(255,255,255,0.07)", boxShadow: "0 40px 100px rgba(0,0,0,0.9)" }}>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-base font-bold text-[#e8e8f0]">Nouveau post</h3>
+                    <button onClick={() => { setShowNewPost(false); setNewContent(""); setNewImage(null); }} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-white/5 transition-colors">
+                      <X className="w-4 h-4 text-[#e8e8f0]/40" />
                     </button>
                   </div>
-                )}
-
-                {/* Separator */}
-                <div style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }} />
-
-                {/* Bottom bar */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1">
-                    <input ref={fileInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFileSelect} />
-                    <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => { if (fileInputRef.current) { fileInputRef.current.accept = "image/*"; fileInputRef.current.click(); } }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-[#e8e8f0]/50 hover:text-[#00c8ff] hover:bg-[#00c8ff]/08 transition-all">
-                      <Image className="w-4 h-4" />
-                      Photo
-                    </motion.button>
-                    <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => { if (fileInputRef.current) { fileInputRef.current.accept = "video/*"; fileInputRef.current.click(); } }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-[#e8e8f0]/50 hover:text-[#e8102a] hover:bg-[#e8102a]/08 transition-all">
-                      <Video className="w-4 h-4" />
-                      Vidéo
+                  <div className="flex gap-3 mb-4">
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ background: currentUser.avatarColor }}>
+                      {getInitials(currentUser.username)}
+                    </div>
+                    <textarea value={newContent} onChange={e => setNewContent(e.target.value)} placeholder="Partage quelque chose d'incroyable…" rows={4} className="flex-1 resize-none text-sm bg-transparent text-[#e8e8f0] placeholder:text-[#e8e8f0]/22 outline-none leading-relaxed" />
+                  </div>
+                  {newImage && (
+                    <div className="relative mb-4 rounded-xl overflow-hidden">
+                      <img src={newImage} alt="" className="w-full max-h-48 object-cover rounded-xl" />
+                      <button onClick={() => setNewImage(null)} className="absolute top-2 right-2 w-7 h-7 flex items-center justify-center rounded-full" style={{ background: "rgba(0,0,0,0.75)" }}>
+                        <X className="w-3.5 h-3.5 text-white" />
+                      </button>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between pt-3 border-t" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
+                    <div className="flex gap-2">
+                      <button onClick={() => fileInputRef.current?.click()} className="p-2 rounded-xl hover:bg-white/5 transition-colors">
+                        <Image className="w-4 h-4 text-[#00c8ff]" />
+                      </button>
+                      <button onClick={() => videoInputRef.current?.click()} className="p-2 rounded-xl hover:bg-white/5 transition-colors">
+                        <Video className="w-4 h-4 text-[#e8102a]" />
+                      </button>
+                    </div>
+                    <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} onClick={submitPost} disabled={submitting || (!newContent.trim() && !newImage)} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40" style={{ background: "linear-gradient(135deg,#e8102a,#c8001f)", boxShadow: "0 0 20px rgba(232,16,42,0.35)" }}>
+                      <Zap className="w-4 h-4" fill="white" />
+                      {submitting ? "Publication…" : "Publier"}
                     </motion.button>
                   </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-                  <div className="flex items-center gap-2">
-                    <button onClick={closeModal} className="px-4 py-2 rounded-xl text-sm text-[#e8e8f0]/40 hover:text-[#e8e8f0]/70 transition-colors">Annuler</button>
-                    <motion.button
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={submitPost}
-                      disabled={!newPostText.trim() || publishing}
-                      className="px-5 py-2 rounded-xl text-sm font-semibold text-white transition-all"
-                      style={{
-                        background: newPostText.trim() && !publishing ? "linear-gradient(135deg, #e8102a, #c8001f)" : "rgba(232,16,42,0.25)",
-                        boxShadow: newPostText.trim() && !publishing ? "0 0 16px rgba(232,16,42,0.35)" : "none",
-                      }}
-                    >
-                      {publishing ? "Publication..." : "Publier"}
-                    </motion.button>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          {/* Posts */}
+          <div className="space-y-4">
+            {posts.map(post => (
+              <PostCard key={post.id} post={post} onLike={handleLike} onComment={handleComment} />
+            ))}
+          </div>
 
-      {/* FAB */}
-      <motion.button
-        whileHover={{ scale: 1.08 }}
-        whileTap={{ scale: 0.92 }}
-        onClick={() => setShowNewPost(true)}
-        className="fixed bottom-20 right-5 md:bottom-7 md:right-7 w-13 h-13 rounded-full flex items-center justify-center z-40"
-        style={{ background: "linear-gradient(135deg, #e8102a, #c8001f)", boxShadow: "0 0 24px rgba(232,16,42,0.5), 0 4px 16px rgba(232,16,42,0.4)", width: "52px", height: "52px" }}
-      >
-        <Plus className="w-5 h-5 text-white" strokeWidth={2.5} />
-      </motion.button>
+          <p className="text-center text-xs text-[#e8e8f0]/12 mt-10 mb-4">✦ 2026 PlayQuest by varnox•prime</p>
+        </div>
+      </div>
     </Layout>
   );
 }
