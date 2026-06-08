@@ -1,6 +1,11 @@
 {
-  "outputDirectory": "dist",
+  "outputDirectory": "artifacts/playquest/dist/public",
   "buildCommand": "",
   "installCommand": "echo ok",
-  "rewrites": [{ "source": "/:path*", "destination": "/index.html" }]
+  "rewrites": [
+    {
+      "source": "/:path*",
+      "destination": "/index.html"
+    }
+  ]
 }
