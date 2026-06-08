@@ -1,5 +1,5 @@
 {
-  "outputDirectory": "artifacts/playquest/dist/public",
+  "outputDirectory": "dist/public",
   "buildCommand": "",
   "installCommand": "echo ok",
   "rewrites": [
