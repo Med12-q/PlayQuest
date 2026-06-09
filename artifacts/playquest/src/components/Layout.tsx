@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { Home, Compass, MessageCircle, Bell, Settings, Zap, LogOut, Film, Music, Bot, LayoutDashboard } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { store } from "@/lib/store";
-import { getInitials } from "@/lib/utils";
+import { UserAvatar } from "@/components/UserAvatar";
 
 const navItems = [
   { icon: Home,            label: "Accueil",        path: "/feed",          color: "#e8102a" },
@@ -123,12 +123,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           <div className="p-3 border-t" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
             <Link to={`/profile/${currentUser.username}`}>
               <motion.div whileHover={{ backgroundColor: "rgba(255,255,255,0.03)" }} className="flex items-center gap-2.5 p-2.5 rounded-xl cursor-pointer mb-1 transition-all">
-                <div
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-                  style={{ background: currentUser.avatarColor, boxShadow: `0 0 10px ${currentUser.avatarColor}60` }}
-                >
-                  {getInitials(currentUser.username)}
-                </div>
+                <UserAvatar user={currentUser} size="sm" />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold text-[#e8e8f0] truncate">@{currentUser.username}</p>
                   <p className="text-[10px] text-[#e8e8f0]/28 truncate">{currentUser.bio || "Membre PlayQuest"}</p>
@@ -193,8 +188,8 @@ export default function Layout({ children }: { children: ReactNode }) {
         })}
         {currentUser && (
           <Link to={`/profile/${currentUser.username}`}>
-            <motion.div whileTap={{ scale: 0.9 }} className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ background: currentUser.avatarColor, boxShadow: location.startsWith("/profile") ? `0 0 12px ${currentUser.avatarColor}` : "none" }}>
-              {getInitials(currentUser.username)}
+            <motion.div whileTap={{ scale: 0.9 }} className="w-8 h-8 rounded-full overflow-hidden" style={{ boxShadow: location.startsWith("/profile") ? `0 0 12px ${currentUser.avatarColor}` : "none" }}>
+              <UserAvatar user={currentUser} size="sm" />
             </motion.div>
           </Link>
         )}
