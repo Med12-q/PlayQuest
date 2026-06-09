@@ -1,14 +1,26 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Heart, MessageCircle, Share2, Bookmark, Plus, Image, Video, X, Send, MoreHorizontal, Zap, TrendingUp, Play } from "lucide-react";
+import { Heart, MessageCircle, Share2, Bookmark, Plus, Image, Video, X, Send, MoreHorizontal, Zap, TrendingUp, Play, Camera } from "lucide-react";
 import { Link } from "wouter";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
-import { store, Post, User } from "@/lib/store";
-import { getInitials, formatTimeAgo } from "@/lib/utils";
+import { store, Post, User, Story } from "@/lib/store";
+import { getInitials, formatTimeAgo, generateId } from "@/lib/utils";
 import { UserAvatar } from "@/components/UserAvatar";
+import { StoryViewer, StoryGroup } from "@/components/StoryViewer";
 
 interface PostWithUser extends Post { user: User | null; liked: boolean; }
+
+const STORY_GRADIENTS = [
+  "linear-gradient(135deg,#e8102a,#ff6b35)",
+  "linear-gradient(135deg,#9900ff,#e8102a)",
+  "linear-gradient(135deg,#00c8ff,#0066ff)",
+  "linear-gradient(135deg,#39ff14,#00c8ff)",
+  "linear-gradient(135deg,#ff9900,#e8102a)",
+  "linear-gradient(135deg,#00c8ff,#9900ff)",
+  "linear-gradient(135deg,#e8102a,#00c8ff)",
+  "linear-gradient(135deg,#ff00ff,#9900ff)",
+];
 
 function compressImage(file: File, maxWidth = 900, quality = 0.82): Promise<string> {
   return new Promise(resolve => {
@@ -29,20 +41,34 @@ function compressImage(file: File, maxWidth = 900, quality = 0.82): Promise<stri
   });
 }
 
-function StoryCircle({ user, isOwn }: { user: User; isOwn?: boolean }) {
+function StoryCircle({ user, isOwn, hasStory, viewed, onClick }: { user: User; isOwn?: boolean; hasStory?: boolean; viewed?: boolean; onClick?: () => void }) {
+  const ring = isOwn
+    ? (hasStory ? "linear-gradient(135deg,#e8102a,#00c8ff)" : "rgba(255,255,255,0.07)")
+    : viewed
+      ? "rgba(255,255,255,0.15)"
+      : `linear-gradient(135deg,${user.avatarColor},#00c8ff)`;
+
   return (
-    <motion.div whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.93 }} className="flex flex-col items-center gap-1.5 cursor-pointer flex-shrink-0">
+    <motion.div whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.93 }} onClick={onClick} className="flex flex-col items-center gap-1.5 cursor-pointer flex-shrink-0">
       <div className="relative">
-        <div className="w-14 h-14 rounded-2xl p-[2px]" style={{ background: isOwn ? "rgba(255,255,255,0.07)" : `linear-gradient(135deg,${user.avatarColor},#00c8ff)` }}>
-          {isOwn ? (
-            <div className="w-full h-full rounded-[10px] flex items-center justify-center" style={{ background: "rgba(10,10,18,0.95)" }}>
-              <Plus className="w-4 h-4 text-[#e8e8f0]/40" />
+        <div className="w-14 h-14 rounded-2xl p-[2px]" style={{ background: ring }}>
+          {isOwn && !hasStory ? (
+            <div className="w-full h-full rounded-[10px] flex items-center justify-center relative overflow-hidden" style={{ background: "rgba(10,10,18,0.95)" }}>
+              <UserAvatar user={user} size="md" square className="w-full h-full rounded-[10px] opacity-40" style={{ boxShadow: "none" }} />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Plus className="w-5 h-5 text-white/70" />
+              </div>
             </div>
           ) : (
             <UserAvatar user={user} size="md" square className="w-full h-full rounded-[10px]" style={{ boxShadow: "none" }} />
           )}
         </div>
         {!isOwn && <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-[2px] border-[#06060d]" style={{ background: "#39ff14", boxShadow: "0 0 6px rgba(57,255,20,0.8)" }} />}
+        {isOwn && !hasStory && (
+          <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full flex items-center justify-center border-[2px] border-[#06060d]" style={{ background: "#e8102a" }}>
+            <Plus className="w-2.5 h-2.5 text-white" />
+          </div>
+        )}
       </div>
       <span className="text-[10px] text-[#e8e8f0]/38 font-medium truncate max-w-[56px] text-center">
         {isOwn ? "Ma story" : `@${user.username.slice(0, 7)}`}
@@ -58,11 +84,7 @@ function VideoEmbed({ url }: { url: string }) {
     return (
       <div className="relative rounded-xl overflow-hidden" style={{ paddingBottom: "56.25%" }}>
         {!played ? (
-          <div
-            className="absolute inset-0 flex items-center justify-center cursor-pointer"
-            style={{ background: "linear-gradient(135deg,rgba(0,0,0,0.85),rgba(14,14,22,0.9))" }}
-            onClick={() => setPlayed(true)}
-          >
+          <div className="absolute inset-0 flex items-center justify-center cursor-pointer" style={{ background: "linear-gradient(135deg,rgba(0,0,0,0.85),rgba(14,14,22,0.9))" }} onClick={() => setPlayed(true)}>
             <motion.div whileHover={{ scale: 1.12 }} className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: "rgba(232,16,42,0.9)", boxShadow: "0 0 30px rgba(232,16,42,0.5)" }}>
               <Play className="w-7 h-7 text-white fill-white ml-1" />
             </motion.div>
@@ -71,13 +93,7 @@ function VideoEmbed({ url }: { url: string }) {
             </div>
           </div>
         ) : (
-          <iframe
-            src={`${url}&autoplay=1`}
-            className="absolute inset-0 w-full h-full"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-            style={{ border: "none" }}
-          />
+          <iframe src={`${url}&autoplay=1`} className="absolute inset-0 w-full h-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen style={{ border: "none" }} />
         )}
       </div>
     );
@@ -92,8 +108,12 @@ function VideoEmbed({ url }: { url: string }) {
 function PostCard({ post, onLike, onComment }: { post: PostWithUser; onLike: (id: string) => void; onComment: (id: string, text: string) => void }) {
   const [commentText, setCommentText] = useState("");
   const [showComments, setShowComments] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useState(() => {
+    const s = JSON.parse(localStorage.getItem("pq_saved") || "[]") as string[];
+    return s.includes(post.id);
+  });
   const [comments, setComments] = useState(() => store.getComments(post.id));
+  const [showShare, setShowShare] = useState(false);
 
   const handleComment = () => {
     const text = commentText.trim();
@@ -101,6 +121,22 @@ function PostCard({ post, onLike, onComment }: { post: PostWithUser; onLike: (id
     onComment(post.id, text);
     setComments(store.getComments(post.id));
     setCommentText("");
+  };
+
+  const toggleSave = () => {
+    const s = JSON.parse(localStorage.getItem("pq_saved") || "[]") as string[];
+    const newS = saved ? s.filter(id => id !== post.id) : [...s, post.id];
+    localStorage.setItem("pq_saved", JSON.stringify(newS));
+    setSaved(!saved);
+  };
+
+  const handleShare = () => {
+    if (navigator.share) {
+      navigator.share({ text: post.content, title: "PlayQuest" });
+    } else {
+      setShowShare(true);
+      setTimeout(() => setShowShare(false), 2000);
+    }
   };
 
   const hasMedia = post.mediaUrl || post.imageUrl;
@@ -111,12 +147,20 @@ function PostCard({ post, onLike, onComment }: { post: PostWithUser; onLike: (id
       {/* Header */}
       <div className="flex items-center gap-3 p-4 pb-3">
         <div className="relative">
-          {post.user && <UserAvatar user={post.user} size="md" />}
+          {post.user && (
+            <Link to={`/profile/${post.user.username}`}>
+              <div className="p-[2px] rounded-full cursor-pointer" style={{ background: `linear-gradient(135deg,${post.user.avatarColor},#00c8ff)` }}>
+                <UserAvatar user={post.user} size="md" style={{ border: "2px solid #0a0a11", boxShadow: "none" }} />
+              </div>
+            </Link>
+          )}
           {!post.user && <div className="w-10 h-10 rounded-full bg-[#444]" />}
           <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-[2px] border-[#0a0a11]" style={{ background: "#39ff14", boxShadow: "0 0 6px rgba(57,255,20,0.7)" }} />
         </div>
         <div className="flex-1">
-          <p className="text-sm font-semibold text-[#e8e8f0]">@{post.user?.username}</p>
+          <Link to={`/profile/${post.user?.username}`}>
+            <p className="text-sm font-semibold text-[#e8e8f0] hover:text-[#00c8ff] transition-colors cursor-pointer">@{post.user?.username}</p>
+          </Link>
           <p className="text-[11px] text-[#e8e8f0]/30 mt-0.5 flex items-center gap-1">
             {formatTimeAgo(post.createdAt)}
             {isVideo && <><span className="text-[#e8e8f0]/20">·</span><span className="text-[#e8102a] font-medium">Vidéo</span></>}
@@ -144,13 +188,7 @@ function PostCard({ post, onLike, onComment }: { post: PostWithUser; onLike: (id
             <VideoEmbed url={post.mediaUrl} />
           ) : (
             <div className="rounded-xl overflow-hidden">
-              <img
-                src={post.mediaUrl || post.imageUrl}
-                alt=""
-                className="w-full object-cover max-h-80"
-                loading="lazy"
-                onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
-              />
+              <img src={post.mediaUrl || post.imageUrl} alt="" className="w-full object-cover max-h-80" loading="lazy" onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
             </div>
           )}
         </div>
@@ -171,11 +209,20 @@ function PostCard({ post, onLike, onComment }: { post: PostWithUser; onLike: (id
               {post.commentsCount >= 1000 ? `${(post.commentsCount / 1000).toFixed(1)}k` : comments.length}
             </span>
           </motion.button>
-          <motion.button whileTap={{ scale: 0.8 }} className="group" onClick={() => { if (navigator.share) navigator.share({ text: post.content }); }}>
-            <Share2 className="w-[18px] h-[18px] text-[#e8e8f0]/28 group-hover:text-[#39ff14] transition-colors" />
-          </motion.button>
+          <div className="relative">
+            <motion.button whileTap={{ scale: 0.8 }} onClick={handleShare} className="group">
+              <Share2 className="w-[18px] h-[18px] text-[#e8e8f0]/28 group-hover:text-[#39ff14] transition-colors" />
+            </motion.button>
+            <AnimatePresence>
+              {showShare && (
+                <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: -32 }} exit={{ opacity: 0 }} className="absolute left-0 text-xs whitespace-nowrap px-2 py-1 rounded-lg font-medium" style={{ background: "rgba(57,255,20,0.15)", color: "#39ff14", border: "1px solid rgba(57,255,20,0.3)" }}>
+                  Lien copié !
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
-        <motion.button whileTap={{ scale: 0.8 }} onClick={() => setSaved(s => !s)}>
+        <motion.button whileTap={{ scale: 0.8 }} onClick={toggleSave}>
           <Bookmark className={`w-[18px] h-[18px] transition-colors ${saved ? "fill-[#ff9900] text-[#ff9900]" : "text-[#e8e8f0]/28 hover:text-[#ff9900]"}`} />
         </motion.button>
       </div>
@@ -223,6 +270,19 @@ export default function FeedPage() {
   const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
+  const storyPhotoRef = useRef<HTMLInputElement>(null);
+
+  // Story viewer
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerGroups, setViewerGroups] = useState<StoryGroup[]>([]);
+  const [viewerStartIndex, setViewerStartIndex] = useState(0);
+
+  // Story creation
+  const [createStoryOpen, setCreateStoryOpen] = useState(false);
+  const [storyContent, setStoryContent] = useState("");
+  const [storyGradient, setStoryGradient] = useState(STORY_GRADIENTS[0]);
+  const [storyImage, setStoryImage] = useState<string | null>(null);
+  const [myStoryExists, setMyStoryExists] = useState(false);
 
   const loadPosts = () => {
     if (!currentUser) return;
@@ -233,9 +293,17 @@ export default function FeedPage() {
     })));
   };
 
+  const loadStories = () => {
+    if (!currentUser) return;
+    const allStories = store.getStories();
+    setMyStoryExists(allStories.some(s => s.userId === currentUser.id));
+    const usersWithStories = store.getUsers().filter(u => u.id !== currentUser.id && allStories.some(s => s.userId === u.id));
+    setStories(usersWithStories.slice(0, 8));
+  };
+
   useEffect(() => {
     loadPosts();
-    setStories(store.getUsers().filter(u => u.id !== currentUser?.id).slice(0, 6));
+    loadStories();
   }, [currentUser]);
 
   const handleLike = (postId: string) => {
@@ -264,11 +332,51 @@ export default function FeedPage() {
   const submitPost = () => {
     if (!currentUser || (!newContent.trim() && !newImage)) return;
     setSubmitting(true);
+    const content = newContent.trim() || "✦";
+    const hashtags = (content.match(/#\w+/g) || []).map(h => h.slice(1));
     setTimeout(() => {
-      store.addPost({ userId: currentUser.id, content: newContent.trim() || "✦", imageUrl: newImage || undefined, hashtags: [] });
+      store.addPost({ userId: currentUser.id, content, imageUrl: newImage || undefined, hashtags });
       setNewContent(""); setNewImage(null); setShowNewPost(false); setSubmitting(false);
       loadPosts();
     }, 350);
+  };
+
+  const openStoryViewer = (user: User) => {
+    const allStories = store.getStories();
+    const usersWithStories = store.getUsers().filter(u => allStories.some(s => s.userId === u.id));
+    const groups: StoryGroup[] = usersWithStories.map(u => ({
+      user: u,
+      stories: allStories.filter(s => s.userId === u.id),
+    }));
+    const startIdx = Math.max(0, groups.findIndex(g => g.user.id === user.id));
+    setViewerGroups(groups);
+    setViewerStartIndex(startIdx);
+    setViewerOpen(true);
+  };
+
+  const submitStory = () => {
+    if (!currentUser || (!storyContent.trim() && !storyImage)) return;
+    const story: Story = {
+      id: generateId(),
+      userId: currentUser.id,
+      content: storyContent.trim() || "✦",
+      gradient: storyGradient,
+      expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
+      viewedBy: [],
+    };
+    store.addStory(story);
+    setStoryContent(""); setStoryImage(null); setCreateStoryOpen(false);
+    loadStories();
+  };
+
+  const handleStoryPhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const compressed = await compressImage(file, 600, 0.85);
+      setStoryImage(compressed);
+    } catch { /* ignore */ }
+    e.target.value = "";
   };
 
   if (!currentUser) return null;
@@ -287,15 +395,32 @@ export default function FeedPage() {
               </p>
             </div>
             <Link to={`/profile/${currentUser.username}`}>
-              <UserAvatar user={currentUser} size="sm" style={{ boxShadow: `0 0 14px ${currentUser.avatarColor}70`, width: "36px", height: "36px" }} />
+              <div className="p-[2px] rounded-full" style={{ background: `linear-gradient(135deg,${currentUser.avatarColor},#00c8ff)` }}>
+                <UserAvatar user={currentUser} size="sm" style={{ border: "2px solid #06060d", boxShadow: "none" }} />
+              </div>
             </Link>
           </div>
 
           {/* Stories */}
           <div className="mb-5">
             <div className="flex gap-3 overflow-x-auto pb-1.5" style={{ scrollbarWidth: "none" }}>
-              {currentUser && <StoryCircle user={currentUser} isOwn />}
-              {stories.map(u => <StoryCircle key={u.id} user={u} />)}
+              {currentUser && (
+                <StoryCircle
+                  user={currentUser}
+                  isOwn
+                  hasStory={myStoryExists}
+                  onClick={() => {
+                    if (myStoryExists) openStoryViewer(currentUser);
+                    else setCreateStoryOpen(true);
+                  }}
+                />
+              )}
+              {stories.map(u => {
+                const viewed = store.getStories().filter(s => s.userId === u.id).every(s => s.viewedBy.includes(currentUser.id));
+                return (
+                  <StoryCircle key={u.id} user={u} hasStory viewed={viewed} onClick={() => openStoryViewer(u)} />
+                );
+              })}
             </div>
           </div>
 
@@ -330,7 +455,7 @@ export default function FeedPage() {
                   </div>
                   <div className="flex gap-3 mb-4">
                     <UserAvatar user={currentUser} size="sm" style={{ width: "36px", height: "36px" }} />
-                    <textarea value={newContent} onChange={e => setNewContent(e.target.value)} placeholder="Partage quelque chose d'incroyable…" rows={4} className="flex-1 resize-none text-sm bg-transparent text-[#e8e8f0] placeholder:text-[#e8e8f0]/20 outline-none leading-relaxed" />
+                    <textarea value={newContent} onChange={e => setNewContent(e.target.value)} placeholder="Partage quelque chose d'incroyable… (#hashtag)" rows={4} className="flex-1 resize-none text-sm bg-transparent text-[#e8e8f0] placeholder:text-[#e8e8f0]/20 outline-none leading-relaxed" />
                   </div>
                   {newImage && (
                     <div className="relative mb-4">
@@ -355,6 +480,51 @@ export default function FeedPage() {
             )}
           </AnimatePresence>
 
+          {/* Create Story modal */}
+          <AnimatePresence>
+            {createStoryOpen && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.88)", backdropFilter: "blur(8px)" }}>
+                <motion.div initial={{ scale: 0.94, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.94, opacity: 0 }} className="w-full max-w-sm" style={{ background: "rgba(9,9,15,0.99)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "24px", overflow: "hidden" }}>
+                  {/* Story preview */}
+                  <div className="relative h-52 flex items-center justify-center" style={{ background: storyGradient }}>
+                    {storyImage && <img src={storyImage} alt="" className="absolute inset-0 w-full h-full object-cover" />}
+                    <p className="text-white text-lg font-bold text-center px-6 drop-shadow-lg relative z-10">{storyContent || "Votre story ici…"}</p>
+                    <div className="absolute top-3 left-3 right-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <UserAvatar user={currentUser} size="xs" />
+                        <span className="text-white text-xs font-semibold">{currentUser.username}</span>
+                      </div>
+                      <button onClick={() => { setCreateStoryOpen(false); setStoryContent(""); setStoryImage(null); }} className="w-7 h-7 flex items-center justify-center rounded-full" style={{ background: "rgba(0,0,0,0.4)" }}>
+                        <X className="w-3.5 h-3.5 text-white" />
+                      </button>
+                    </div>
+                  </div>
+                  {/* Controls */}
+                  <div className="p-4 space-y-3">
+                    <input value={storyContent} onChange={e => setStoryContent(e.target.value)} placeholder="Texte de la story…" maxLength={80} className="w-full px-3 py-2.5 rounded-xl text-sm outline-none text-[#e8e8f0] placeholder:text-[#e8e8f0]/30" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)" }} />
+                    <div>
+                      <p className="text-[10px] text-[#e8e8f0]/40 mb-1.5 uppercase tracking-wider">Couleur de fond</p>
+                      <div className="flex gap-2 flex-wrap">
+                        {STORY_GRADIENTS.map(g => (
+                          <button key={g} onClick={() => setStoryGradient(g)} className="w-7 h-7 rounded-full transition-all" style={{ background: g, transform: storyGradient === g ? "scale(1.25)" : "scale(1)", boxShadow: storyGradient === g ? "0 0 10px rgba(255,255,255,0.4)" : "none", border: storyGradient === g ? "2px solid white" : "2px solid transparent" }} />
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => storyPhotoRef.current?.click()} className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-medium transition-all" style={{ background: "rgba(0,200,255,0.08)", border: "1px solid rgba(0,200,255,0.2)", color: "#00c8ff" }}>
+                        <Camera className="w-4 h-4" /> Photo
+                      </button>
+                      <input ref={storyPhotoRef} type="file" accept="image/*" className="hidden" onChange={handleStoryPhotoSelect} />
+                      <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={submitStory} disabled={!storyContent.trim() && !storyImage} className="flex-1 py-2 rounded-xl text-xs font-bold text-white disabled:opacity-40" style={{ background: "linear-gradient(135deg,#e8102a,#c8001f)", boxShadow: "0 0 16px rgba(232,16,42,0.35)" }}>
+                        Publier la story
+                      </motion.button>
+                    </div>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Posts */}
           <div className="space-y-4">
             {posts.map(post => (
@@ -365,6 +535,18 @@ export default function FeedPage() {
           <p className="text-center text-[10px] text-[#e8e8f0]/12 mt-10 mb-4">✦ 2026 PlayQuest by varnox•prime</p>
         </div>
       </div>
+
+      {/* Story Viewer */}
+      <AnimatePresence>
+        {viewerOpen && viewerGroups.length > 0 && (
+          <StoryViewer
+            groups={viewerGroups}
+            startGroupIndex={viewerStartIndex}
+            onClose={() => { setViewerOpen(false); loadStories(); }}
+            currentUserId={currentUser.id}
+          />
+        )}
+      </AnimatePresence>
     </Layout>
   );
 }
