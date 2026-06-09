@@ -6,6 +6,7 @@ export const UserSchema = z.object({
   email: z.string(),
   password: z.string(),
   avatarColor: z.string(),
+  avatarUrl: z.string().optional(),
   bio: z.string().optional(),
   followersCount: z.number().default(0),
   followingCount: z.number().default(0),
