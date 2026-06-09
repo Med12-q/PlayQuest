@@ -1,21 +1,47 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, Link } from "wouter";
 import { motion } from "framer-motion";
-import { Grid, Repeat2, Bookmark, UserPlus, UserCheck, Edit3, Heart, MessageCircle, TrendingUp, LayoutDashboard } from "lucide-react";
+import { Grid, Repeat2, Bookmark, UserPlus, UserCheck, Edit3, Heart, MessageCircle, TrendingUp, LayoutDashboard, Camera } from "lucide-react";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
 import { store, User, Post } from "@/lib/store";
 import { getInitials } from "@/lib/utils";
+import { UserAvatar } from "@/components/UserAvatar";
+
+function compressImage(file: File, maxSize = 400, quality = 0.85): Promise<string> {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = document.createElement("img");
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let { width, height } = img;
+        const max = maxSize;
+        if (width > max || height > max) {
+          if (width > height) { height = (height * max) / width; width = max; }
+          else { width = (width * max) / height; height = max; }
+        }
+        canvas.width = width; canvas.height = height;
+        canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.src = e.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 export default function ProfilePage() {
   const params = useParams<{ username: string }>();
-  const { currentUser } = useAuth();
+  const { currentUser, updateUser } = useAuth();
   const [user, setUser] = useState<User | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [following, setFollowing] = useState(false);
   const [activeTab, setActiveTab] = useState<"posts" | "reposts" | "saved">("posts");
   const [followersCount, setFollowersCount] = useState(0);
   const [totalLikes, setTotalLikes] = useState(0);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const u = store.getUserByUsername(params.username);
@@ -37,6 +63,21 @@ export default function ProfilePage() {
     const newFollowing = store.toggleFollow(currentUser.id, user.id);
     setFollowing(newFollowing);
     setFollowersCount(prev => newFollowing ? prev + 1 : prev - 1);
+  };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !currentUser || !user) return;
+    setUploadingPhoto(true);
+    try {
+      const compressed = await compressImage(file);
+      const updated = { ...currentUser, avatarUrl: compressed };
+      updateUser(updated);
+      setUser(updated);
+    } catch { /* ignore */ } finally {
+      setUploadingPhoto(false);
+      e.target.value = "";
+    }
   };
 
   if (!user) return (
@@ -61,7 +102,6 @@ export default function ProfilePage() {
         <div className="h-40 md:h-52 relative overflow-hidden">
           <div className="absolute inset-0" style={{ background: `linear-gradient(135deg,${user.avatarColor}30 0%,rgba(0,200,255,0.08) 50%,#06060d 100%)` }} />
           <div className="absolute inset-0 opacity-10" style={{ backgroundImage: "linear-gradient(rgba(255,255,255,0.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.05) 1px,transparent 1px)", backgroundSize: "40px 40px" }} />
-          {/* Aurora glow */}
           <div className="absolute inset-0 pointer-events-none">
             <div className="absolute w-64 h-64 rounded-full blur-3xl top-0 left-1/4" style={{ background: `${user.avatarColor}20` }} />
             <div className="absolute w-48 h-48 rounded-full blur-3xl top-0 right-1/4" style={{ background: "rgba(0,200,255,0.08)" }} />
@@ -73,10 +113,36 @@ export default function ProfilePage() {
           {/* Avatar + actions */}
           <div className="flex items-end justify-between mb-5">
             <motion.div initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 300 }}>
-              <div className="w-24 h-24 rounded-2xl p-0.5" style={{ background: `linear-gradient(135deg,${user.avatarColor},#00c8ff)`, boxShadow: `0 0 30px ${user.avatarColor}60` }}>
-                <div className="w-full h-full rounded-[14px] flex items-center justify-center text-2xl font-black text-white" style={{ background: user.avatarColor }}>
-                  {getInitials(user.username)}
+              <div className="relative">
+                <div className="w-24 h-24 rounded-2xl p-0.5" style={{ background: `linear-gradient(135deg,${user.avatarColor},#00c8ff)`, boxShadow: `0 0 30px ${user.avatarColor}60` }}>
+                  <UserAvatar
+                    user={user}
+                    size="xl"
+                    square
+                    className="w-full h-full"
+                    style={{ boxShadow: "none" }}
+                  />
                 </div>
+                {isOwn && (
+                  <>
+                    <motion.button
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() => photoInputRef.current?.click()}
+                      disabled={uploadingPhoto}
+                      className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full flex items-center justify-center"
+                      style={{ background: "linear-gradient(135deg,#e8102a,#c8001f)", boxShadow: "0 0 14px rgba(232,16,42,0.5)", border: "2px solid #06060d" }}
+                      title="Changer la photo"
+                    >
+                      {uploadingPhoto ? (
+                        <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        <Camera className="w-3.5 h-3.5 text-white" />
+                      )}
+                    </motion.button>
+                    <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
+                  </>
+                )}
               </div>
             </motion.div>
 
@@ -113,6 +179,14 @@ export default function ProfilePage() {
               </div>
               <span className="text-[11px] text-[#e8e8f0]/25">• Membre PlayQuest 2026</span>
             </div>
+            {isOwn && !user.avatarUrl && (
+              <button
+                onClick={() => photoInputRef.current?.click()}
+                className="mt-3 flex items-center gap-1.5 text-xs text-[#00c8ff]/60 hover:text-[#00c8ff] transition-colors"
+              >
+                <Camera className="w-3.5 h-3.5" /> Ajouter une photo de profil
+              </button>
+            )}
           </div>
 
           {/* Stats */}
@@ -140,7 +214,6 @@ export default function ProfilePage() {
             ))}
           </div>
 
-          {/* Posts grid */}
           {activeTab === "posts" && (
             posts.length === 0 ? (
               <div className="text-center py-16 text-[#e8e8f0]/25">
@@ -152,11 +225,22 @@ export default function ProfilePage() {
               <motion.div className="grid grid-cols-3 gap-2" layout>
                 {posts.map((post, i) => (
                   <motion.div key={post.id} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.04 }} whileHover={{ scale: 1.03, zIndex: 10 }} className="aspect-square rounded-xl overflow-hidden relative group cursor-pointer" style={{ background: post.imageGradient || `linear-gradient(135deg,${user.avatarColor}40,rgba(0,200,255,0.15))` }}>
-                    {post.imageUrl && <img src={post.imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />}
+                    {(post.imageUrl || post.mediaUrl) && post.mediaType !== "video" && (
+                      <img src={post.mediaUrl || post.imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                    )}
+                    {post.mediaType === "video" && (
+                      <div className="absolute inset-0 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
+                        <TrendingUp className="w-6 h-6 text-white opacity-60" />
+                      </div>
+                    )}
                     <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-all duration-200 flex flex-col items-center justify-center gap-1" style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(2px)" }}>
                       <div className="flex items-center gap-1 text-white">
                         <Heart className="w-3.5 h-3.5 fill-white" />
                         <span className="text-xs font-semibold">{post.likesCount}</span>
+                      </div>
+                      <div className="flex items-center gap-1 text-white/70">
+                        <MessageCircle className="w-3 h-3" />
+                        <span className="text-[10px]">{post.commentsCount}</span>
                       </div>
                       <p className="text-white text-[9px] px-2 text-center line-clamp-2 leading-tight opacity-80">{post.content}</p>
                     </div>
