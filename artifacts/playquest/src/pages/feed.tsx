@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Heart, MessageCircle, Share2, Bookmark, Plus, Image, Video, X, Send, MoreHorizontal, Zap, TrendingUp, Play } from "lucide-react";
+import { Link } from "wouter";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
 import { store, Post, User } from "@/lib/store";
 import { getInitials, formatTimeAgo } from "@/lib/utils";
+import { UserAvatar } from "@/components/UserAvatar";
 
 interface PostWithUser extends Post { user: User | null; liked: boolean; }
 
@@ -32,9 +34,13 @@ function StoryCircle({ user, isOwn }: { user: User; isOwn?: boolean }) {
     <motion.div whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.93 }} className="flex flex-col items-center gap-1.5 cursor-pointer flex-shrink-0">
       <div className="relative">
         <div className="w-14 h-14 rounded-2xl p-[2px]" style={{ background: isOwn ? "rgba(255,255,255,0.07)" : `linear-gradient(135deg,${user.avatarColor},#00c8ff)` }}>
-          <div className="w-full h-full rounded-[10px] flex items-center justify-center font-bold text-white text-sm" style={{ background: isOwn ? "rgba(10,10,18,0.95)" : user.avatarColor }}>
-            {isOwn ? <Plus className="w-4 h-4 text-[#e8e8f0]/40" /> : getInitials(user.username)}
-          </div>
+          {isOwn ? (
+            <div className="w-full h-full rounded-[10px] flex items-center justify-center" style={{ background: "rgba(10,10,18,0.95)" }}>
+              <Plus className="w-4 h-4 text-[#e8e8f0]/40" />
+            </div>
+          ) : (
+            <UserAvatar user={user} size="md" square className="w-full h-full rounded-[10px]" style={{ boxShadow: "none" }} />
+          )}
         </div>
         {!isOwn && <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-[2px] border-[#06060d]" style={{ background: "#39ff14", boxShadow: "0 0 6px rgba(57,255,20,0.8)" }} />}
       </div>
@@ -105,9 +111,8 @@ function PostCard({ post, onLike, onComment }: { post: PostWithUser; onLike: (id
       {/* Header */}
       <div className="flex items-center gap-3 p-4 pb-3">
         <div className="relative">
-          <div className="w-10 h-10 rounded-full flex items-center justify-center text-[13px] font-bold text-white" style={{ background: post.user?.avatarColor || "#444", boxShadow: `0 0 14px ${post.user?.avatarColor || "#444"}50` }}>
-            {getInitials(post.user?.username || "?")}
-          </div>
+          {post.user && <UserAvatar user={post.user} size="md" />}
+          {!post.user && <div className="w-10 h-10 rounded-full bg-[#444]" />}
           <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-[2px] border-[#0a0a11]" style={{ background: "#39ff14", boxShadow: "0 0 6px rgba(57,255,20,0.7)" }} />
         </div>
         <div className="flex-1">
@@ -186,7 +191,7 @@ function PostCard({ post, onLike, onComment }: { post: PostWithUser; onLike: (id
                 const cu = store.getUserById(c.userId);
                 return (
                   <div key={i} className="flex gap-2.5">
-                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0" style={{ background: cu?.avatarColor || "#444" }}>{getInitials(cu?.username || "?")}</div>
+                    {cu ? <UserAvatar user={cu} size="xs" /> : <div className="w-6 h-6 rounded-full bg-[#444] flex-shrink-0" />}
                     <div className="flex-1 rounded-xl px-2.5 py-1.5" style={{ background: "rgba(255,255,255,0.04)" }}>
                       <span className="text-xs font-semibold text-[#e8e8f0]/60 mr-1.5">@{cu?.username}</span>
                       <span className="text-xs text-[#e8e8f0]/50">{c.content}</span>
@@ -281,9 +286,9 @@ export default function FeedPage() {
                 <TrendingUp className="w-3 h-3 text-[#39ff14]" /> Tendances du moment
               </p>
             </div>
-            <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ background: currentUser.avatarColor, boxShadow: `0 0 14px ${currentUser.avatarColor}70` }}>
-              {getInitials(currentUser.username)}
-            </div>
+            <Link to={`/profile/${currentUser.username}`}>
+              <UserAvatar user={currentUser} size="sm" style={{ boxShadow: `0 0 14px ${currentUser.avatarColor}70`, width: "36px", height: "36px" }} />
+            </Link>
           </div>
 
           {/* Stories */}
@@ -296,9 +301,7 @@ export default function FeedPage() {
 
           {/* Compose bar */}
           <div className="mb-5 p-3.5 rounded-2xl flex items-center gap-3" style={{ background: "rgba(10,10,17,0.92)", border: "1px solid rgba(255,255,255,0.055)" }}>
-            <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ background: currentUser.avatarColor, boxShadow: `0 0 10px ${currentUser.avatarColor}50` }}>
-              {getInitials(currentUser.username)}
-            </div>
+            <UserAvatar user={currentUser} size="sm" style={{ width: "36px", height: "36px" }} />
             <motion.div whileTap={{ scale: 0.99 }} className="flex-1 text-sm text-[#e8e8f0]/22 cursor-pointer py-2 px-3 rounded-xl select-none" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.04)" }} onClick={() => setShowNewPost(true)}>
               Quoi de neuf, @{currentUser.username} ?
             </motion.div>
@@ -326,9 +329,7 @@ export default function FeedPage() {
                     </button>
                   </div>
                   <div className="flex gap-3 mb-4">
-                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ background: currentUser.avatarColor }}>
-                      {getInitials(currentUser.username)}
-                    </div>
+                    <UserAvatar user={currentUser} size="sm" style={{ width: "36px", height: "36px" }} />
                     <textarea value={newContent} onChange={e => setNewContent(e.target.value)} placeholder="Partage quelque chose d'incroyable…" rows={4} className="flex-1 resize-none text-sm bg-transparent text-[#e8e8f0] placeholder:text-[#e8e8f0]/20 outline-none leading-relaxed" />
                   </div>
                   {newImage && (
