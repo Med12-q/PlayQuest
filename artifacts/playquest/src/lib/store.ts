@@ -49,6 +49,7 @@ export const StorySchema = z.object({
   userId: z.string(),
   content: z.string(),
   gradient: z.string(),
+  imageUrl: z.string().optional(),
   expiresAt: z.string(),
   viewedBy: z.array(z.string()).default([]),
 });
