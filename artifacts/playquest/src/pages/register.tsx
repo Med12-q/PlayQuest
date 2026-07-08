@@ -79,7 +79,7 @@ export default function RegisterPage() {
       {globs.map((g, i) => (
         <motion.div
           key={i}
-          animate={g.anim}
+          animate={g.anim as any}
           className="absolute pointer-events-none rounded-full z-0"
           style={{
             top: g.top, left: g.left,
