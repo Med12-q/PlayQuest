@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, TrendingUp, UserPlus, UserCheck, Heart, MessageCircle, X, Compass, Fire } from "lucide-react";
+import { Search, TrendingUp, UserPlus, UserCheck, Heart, MessageCircle, X, Compass } from "lucide-react";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
 import { store, Post, User } from "@/lib/store";
