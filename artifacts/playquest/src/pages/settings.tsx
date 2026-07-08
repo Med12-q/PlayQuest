@@ -1,449 +1,510 @@
-import { useState, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useLocation } from "wouter";
 import {
-  User, Bell, Shield, LogOut, ChevronRight, Save, Camera, Lock, Eye, EyeOff,
-  HelpCircle, Info, Star, Download, Trash2, Globe, Moon, Smartphone, AtSign,
-  Heart, MessageCircle, UserPlus, Volume2, Link2, Copy, CheckCircle2, AlertTriangle,
-  QrCode, CreditCard, Bookmark, Users, X
+  User, Bell, Shield, LogOut, ChevronRight, Camera, Lock,
+  HelpCircle, Info, Download, Trash2, Globe, Moon, Smartphone, AtSign,
+  Eye, Activity, Heart, MessageCircle, UserPlus, Film, Key,
+  AlertTriangle, CheckCircle, AlertCircle, Edit3, Mail, Languages,
+  Check, Users,
 } from "lucide-react";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { UserAvatar } from "@/components/UserAvatar";
 
-const AVATAR_COLORS = ["#e8102a", "#00c8ff", "#9900ff", "#ff9900", "#39ff14", "#ff00ff", "#00ff88", "#ff6600"];
+// ── Persistent settings ──
+const SETTINGS_KEY = "pq_settings";
 
-function compressImage(file: File, maxSize = 400, quality = 0.85): Promise<string> {
-  return new Promise(resolve => {
-    const reader = new FileReader();
-    reader.onload = e => {
-      const img = document.createElement("img");
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        let { width, height } = img;
-        const max = maxSize;
-        if (width > max || height > max) {
-          if (width > height) { height = (height * max) / width; width = max; }
-          else { width = (width * max) / height; height = max; }
-        }
-        canvas.width = width; canvas.height = height;
-        canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL("image/jpeg", quality));
-      };
-      img.src = e.target?.result as string;
-    };
-    reader.readAsDataURL(file);
-  });
+type SettingsState = {
+  privateAccount: boolean;
+  showActivity: boolean;
+  allowMentions: boolean;
+  allowTags: boolean;
+  showLikes: boolean;
+  notifPush: boolean;
+  notifLikes: boolean;
+  notifComments: boolean;
+  notifFollows: boolean;
+  notifMessages: boolean;
+  notifMentions: boolean;
+  notifStories: boolean;
+  twoFAEnabled: boolean;
+  loginAlerts: boolean;
+  darkMode: boolean;
+};
+
+const defaultSettings: SettingsState = {
+  privateAccount: false,
+  showActivity: true,
+  allowMentions: true,
+  allowTags: true,
+  showLikes: true,
+  notifPush: true,
+  notifLikes: true,
+  notifComments: true,
+  notifFollows: true,
+  notifMessages: true,
+  notifMentions: true,
+  notifStories: false,
+  twoFAEnabled: false,
+  loginAlerts: true,
+  darkMode: true,
+};
+
+function loadSettings(): SettingsState {
+  try {
+    const s = localStorage.getItem(SETTINGS_KEY);
+    if (s) return { ...defaultSettings, ...JSON.parse(s) };
+  } catch { /* ignore */ }
+  return defaultSettings;
 }
 
-type Section = "main" | "profile" | "account" | "privacy" | "notifications" | "security" | "appearance" | "about" | "help";
+// ── Types ──
+type Section = "profile" | "account" | "privacy" | "notifications" | "security" | "appearance" | "help" | "about";
 
-const inputCls = "w-full px-4 py-3 rounded-xl text-sm outline-none transition-all text-[#e8e8f0]";
-const inputStyle = { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(0,200,255,0.2)" };
-
-function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
+// ── Toggle ──
+function Toggle({ checked, onChange, color = "#e8102a", disabled }: { checked: boolean; onChange: (v: boolean) => void; color?: string; disabled?: boolean }) {
   return (
-    <button onClick={() => onChange(!on)} className="relative w-12 h-6 rounded-full transition-all flex-shrink-0" style={{ background: on ? "#e8102a" : "rgba(255,255,255,0.1)", boxShadow: on ? "0 0 10px rgba(232,16,42,0.5)" : "none" }}>
-      <div className="absolute top-1 h-4 w-4 rounded-full bg-white transition-all" style={{ left: on ? "calc(100% - 20px)" : "4px" }} />
-    </button>
-  );
-}
-
-function SettingRow({ icon: Icon, label, sub, color = "#e8e8f0", onClick, rightEl, danger }: { icon: any; label: string; sub?: string; color?: string; onClick?: () => void; rightEl?: React.ReactNode; danger?: boolean }) {
-  return (
-    <motion.button whileTap={{ scale: 0.99 }} onClick={onClick} className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl transition-all group" style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.035)" }}>
-      <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: danger ? "rgba(232,16,42,0.12)" : `${color}15` }}>
-        <Icon className="w-4 h-4" style={{ color: danger ? "#e8102a" : color }} />
-      </div>
-      <div className="flex-1 text-left min-w-0">
-        <p className={`text-sm font-medium ${danger ? "text-[#e8102a]" : "text-[#e8e8f0]"}`}>{label}</p>
-        {sub && <p className="text-[11px] text-[#e8e8f0]/35 mt-0.5 truncate">{sub}</p>}
-      </div>
-      {rightEl || (
-        onClick ? <ChevronRight className="w-4 h-4 text-[#e8e8f0]/25 group-hover:text-[#e8e8f0]/50 flex-shrink-0" /> : null
-      )}
+    <motion.button
+      onClick={() => !disabled && onChange(!checked)}
+      style={{ width: 44, height: 26, borderRadius: 13, background: checked ? color : "rgba(255,255,255,0.12)", transition: "background 0.25s", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.45 : 1, border: "none", padding: 0, flexShrink: 0 }}
+      whileTap={disabled ? {} : { scale: 0.92 }}
+    >
+      <motion.div
+        animate={{ x: checked ? 20 : 2 }}
+        transition={{ type: "spring", stiffness: 500, damping: 30 }}
+        style={{ width: 22, height: 22, borderRadius: "50%", background: "#fff", position: "absolute", top: 2, boxShadow: "0 2px 6px rgba(0,0,0,0.3)", pointerEvents: "none" }}
+      />
     </motion.button>
   );
 }
 
+// ── Row ──
+function Row({ icon, label, sublabel, right, onClick, danger, color }: { icon: React.ReactNode; label: string; sublabel?: string; right?: React.ReactNode; onClick?: () => void; danger?: boolean; color?: string }) {
+  return (
+    <motion.div
+      whileHover={{ backgroundColor: "rgba(255,255,255,0.025)" }}
+      onClick={onClick}
+      className="flex items-center gap-3.5 px-4 py-3.5 transition-colors rounded-xl"
+      style={{ cursor: onClick ? "pointer" : "default" }}
+    >
+      <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: danger ? "rgba(232,16,42,0.12)" : color ? `${color}15` : "rgba(255,255,255,0.06)" }}>
+        <span style={{ color: danger ? "#e8102a" : color || "#e8e8f0" }}>{icon}</span>
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium leading-tight" style={{ color: danger ? "#e8102a" : "#e8e8f0" }}>{label}</p>
+        {sublabel && <p className="text-xs text-[#e8e8f0]/35 mt-0.5 truncate">{sublabel}</p>}
+      </div>
+      {right ?? (onClick ? <ChevronRight className="w-4 h-4 text-[#e8e8f0]/22 flex-shrink-0" /> : null)}
+    </motion.div>
+  );
+}
+
+function Card({ children }: { children: React.ReactNode }) {
+  return <div className="rounded-2xl overflow-hidden mb-3" style={{ background: "rgba(14,14,22,0.92)", border: "1px solid rgba(255,255,255,0.06)" }}>{children}</div>;
+}
+
+function CardLabel({ label }: { label: string }) {
+  return <p className="text-[10px] font-bold uppercase tracking-widest text-[#e8e8f0]/28 px-4 pt-4 pb-2">{label}</p>;
+}
+
+function Field({ label, value, onChange, type = "text", placeholder }: { label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string }) {
+  return (
+    <div>
+      <label className="block text-[10px] font-bold uppercase tracking-widest text-[#e8e8f0]/30 mb-1.5">{label}</label>
+      <input
+        type={type}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full px-4 py-3 rounded-xl text-sm"
+        style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "#e8e8f0", outline: "none" }}
+        onFocus={e => { e.target.style.borderColor = "rgba(232,16,42,0.45)"; e.target.style.background = "rgba(255,255,255,0.07)"; }}
+        onBlur={e => { e.target.style.borderColor = "rgba(255,255,255,0.08)"; e.target.style.background = "rgba(255,255,255,0.05)"; }}
+      />
+    </div>
+  );
+}
+
+function SaveBtn({ label, onClick, color = "#e8102a" }: { label: string; onClick: () => void; color?: string }) {
+  return (
+    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={onClick} className="w-full py-3.5 rounded-2xl text-sm font-bold text-white" style={{ background: `linear-gradient(135deg,${color},${color}cc)`, boxShadow: `0 0 24px ${color}40` }}>
+      {label}
+    </motion.button>
+  );
+}
+
+const SECTIONS: { id: Section; label: string; icon: React.ReactNode; color: string }[] = [
+  { id: "profile", label: "Modifier le profil", icon: <Edit3 className="w-4 h-4" />, color: "#00c8ff" },
+  { id: "account", label: "Compte", icon: <User className="w-4 h-4" />, color: "#9900ff" },
+  { id: "privacy", label: "Confidentialité", icon: <Eye className="w-4 h-4" />, color: "#e8102a" },
+  { id: "notifications", label: "Notifications", icon: <Bell className="w-4 h-4" />, color: "#ff9900" },
+  { id: "security", label: "Sécurité", icon: <Shield className="w-4 h-4" />, color: "#39ff14" },
+  { id: "appearance", label: "Apparence", icon: <Moon className="w-4 h-4" />, color: "#9900ff" },
+  { id: "help", label: "Aide", icon: <HelpCircle className="w-4 h-4" />, color: "#00c8ff" },
+  { id: "about", label: "À propos", icon: <Info className="w-4 h-4" />, color: "#e8e8f0" },
+];
+
 export default function SettingsPage() {
   const { currentUser, updateUser, logout } = useAuth();
   const { toast } = useToast();
-  const [section, setSection] = useState<Section>("main");
-  const photoInputRef = useRef<HTMLInputElement>(null);
+  const [, navigate] = useLocation();
+  const [section, setSection] = useState<Section | null>(null);
+  const [settings, setSettings] = useState<SettingsState>(loadSettings);
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  // Profile
-  const [username, setUsername] = useState(currentUser?.username || "");
-  const [bio, setBio] = useState(currentUser?.bio || "");
-  const [website, setWebsite] = useState("");
-  const [selectedColor, setSelectedColor] = useState(currentUser?.avatarColor || "#e8102a");
-  const [avatarUrl, setAvatarUrl] = useState<string | undefined>(currentUser?.avatarUrl);
-  const [saving, setSaving] = useState(false);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [profileForm, setProfileForm] = useState({
+    username: currentUser?.username || "",
+    bio: currentUser?.bio || "",
+    website: currentUser?.website || "",
+    avatarColor: currentUser?.avatarColor || "#e8102a",
+    displayName: currentUser?.displayName || "",
+  });
 
-  // Privacy
-  const [privateAccount, setPrivateAccount] = useState(false);
-  const [activityStatus, setActivityStatus] = useState(true);
-  const [storyReplies, setStoryReplies] = useState(true);
-  const [allowMentions, setAllowMentions] = useState(true);
-  const [allowTags, setAllowTags] = useState(true);
-  const [showLikeCount, setShowLikeCount] = useState(true);
+  const [accountForm, setAccountForm] = useState({
+    email: currentUser?.email || "",
+    phone: currentUser?.phone || "",
+    birthday: currentUser?.birthday || "",
+    gender: currentUser?.gender || "",
+  });
 
-  // Notifications
-  const [notifLikes, setNotifLikes] = useState(true);
-  const [notifComments, setNotifComments] = useState(true);
-  const [notifFollows, setNotifFollows] = useState(true);
-  const [notifDMs, setNotifDMs] = useState(true);
-  const [notifMentions, setNotifMentions] = useState(true);
-  const [notifStories, setNotifStories] = useState(true);
-  const [notifLive, setNotifLive] = useState(false);
-  const [notifEmail, setNotifEmail] = useState(false);
-  const [pushEnabled, setPushEnabled] = useState(true);
+  const [pwdForm, setPwdForm] = useState({ old: "", new1: "", new2: "" });
+  const [pwdError, setPwdError] = useState("");
+  const [pwdSuccess, setPwdSuccess] = useState(false);
 
-  // Security
-  const [showPassword, setShowPassword] = useState(false);
-  const [twoFA, setTwoFA] = useState(false);
-  const [savedLogin, setSavedLogin] = useState(true);
-  const [loginAlerts, setLoginAlerts] = useState(true);
+  useEffect(() => {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  }, [settings]);
 
-  // Appearance
-  const [darkMode, setDarkMode] = useState(true);
+  const set = <K extends keyof SettingsState>(k: K, v: SettingsState[K]) =>
+    setSettings(prev => ({ ...prev, [k]: v }));
 
-  // Copied state
-  const [copied, setCopied] = useState(false);
-
-  if (!currentUser) return null;
-
-  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingPhoto(true);
-    try { setAvatarUrl(await compressImage(file)); }
-    catch { toast({ title: "Erreur", description: "Impossible de charger l'image." }); }
-    finally { setUploadingPhoto(false); e.target.value = ""; }
-  };
-
-  const saveProfile = async () => {
+  const saveProfile = () => {
     if (!currentUser) return;
-    setSaving(true);
-    await new Promise(r => setTimeout(r, 500));
-    updateUser({ ...currentUser, username, bio, avatarColor: selectedColor, avatarUrl });
-    setSaving(false);
-    toast({ title: "✦ Profil mis à jour !", description: "Vos modifications ont été sauvegardées." });
+    if (profileForm.username.trim().length < 3) {
+      toast({ title: "Erreur", description: "Pseudo : min. 3 caractères.", variant: "destructive" }); return;
+    }
+    updateUser({ ...currentUser, ...profileForm });
+    toast({ title: "✓ Profil sauvegardé", description: "Vos informations ont été mises à jour." });
   };
 
-  const copyProfileLink = () => {
-    navigator.clipboard.writeText(`https://playquest.varnox.prime/@${currentUser.username}`).catch(() => {});
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const saveAccount = () => {
+    if (!currentUser) return;
+    updateUser({ ...currentUser, ...accountForm });
+    toast({ title: "✓ Compte sauvegardé", description: "Informations du compte mises à jour." });
   };
 
-  const previewUser = { ...currentUser, username, avatarColor: selectedColor, avatarUrl };
+  const changePassword = () => {
+    setPwdError(""); setPwdSuccess(false);
+    if (!currentUser) return;
+    if (!pwdForm.old) { setPwdError("Entrez votre mot de passe actuel."); return; }
+    if (currentUser.password !== pwdForm.old) { setPwdError("Mot de passe actuel incorrect."); return; }
+    if (pwdForm.new1.length < 4) { setPwdError("Nouveau mot de passe : min. 4 caractères."); return; }
+    if (pwdForm.new1 !== pwdForm.new2) { setPwdError("Les mots de passe ne correspondent pas."); return; }
+    updateUser({ ...currentUser, password: pwdForm.new1 });
+    setPwdForm({ old: "", new1: "", new2: "" });
+    setPwdSuccess(true);
+    toast({ title: "✓ Mot de passe changé", description: "Votre mot de passe a été mis à jour avec succès." });
+  };
 
-  const goBack = () => setSection("main");
+  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !currentUser) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      updateUser({ ...currentUser, avatar: ev.target?.result as string });
+      toast({ title: "✓ Photo mise à jour", description: "Votre photo de profil a été changée." });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleDeleteAccount = () => {
+    if (!confirm("Supprimer définitivement votre compte ? Cette action est irréversible.")) return;
+    if (!currentUser) return;
+    try {
+      const users = JSON.parse(localStorage.getItem("pq_users") || "[]");
+      localStorage.setItem("pq_users", JSON.stringify(users.filter((u: { id: string }) => u.id !== currentUser.id)));
+    } catch { /* ignore */ }
+    logout();
+    navigate("/");
+    toast({ title: "Compte supprimé" });
+  };
+
+  const avatarUrl = currentUser?.avatar;
+  const initials = currentUser?.username?.slice(0, 2).toUpperCase() || "??";
+
+  const renderSection = (): React.ReactNode => {
+    if (section === "profile") return (
+      <div className="space-y-4">
+        <Card>
+          <CardLabel label="Photo de profil" />
+          <div className="flex items-center gap-4 px-4 pb-4">
+            <div className="relative">
+              {avatarUrl
+                ? <img src={avatarUrl} className="w-16 h-16 rounded-full object-cover" style={{ border: `2px solid ${profileForm.avatarColor}` }} alt="" />
+                : <div className="w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold text-white" style={{ background: profileForm.avatarColor, boxShadow: `0 0 20px ${profileForm.avatarColor}50` }}>{initials}</div>
+              }
+              <button onClick={() => fileRef.current?.click()} className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full flex items-center justify-center" style={{ background: "#e8102a", border: "2px solid #0a0a0f" }}>
+                <Camera className="w-3.5 h-3.5 text-white" />
+              </button>
+              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-[#e8e8f0]">@{currentUser?.username}</p>
+              <button onClick={() => fileRef.current?.click()} className="text-xs font-medium mt-0.5" style={{ color: "#00c8ff" }}>Changer la photo</button>
+            </div>
+          </div>
+        </Card>
+
+        <Card>
+          <CardLabel label="Couleur du profil" />
+          <div className="flex gap-3 px-4 pb-4 flex-wrap">
+            {["#e8102a", "#00c8ff", "#9900ff", "#ff9900", "#39ff14", "#ff6b35", "#ff007f", "#00ffcc"].map(c => (
+              <motion.button key={c} whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} onClick={() => setProfileForm(f => ({ ...f, avatarColor: c }))}
+                className="w-9 h-9 rounded-full flex items-center justify-center"
+                style={{ background: c, boxShadow: `0 0 12px ${c}80`, border: profileForm.avatarColor === c ? "2.5px solid white" : "2.5px solid transparent" }}>
+                {profileForm.avatarColor === c && <Check className="w-4 h-4 text-white" strokeWidth={3} />}
+              </motion.button>
+            ))}
+          </div>
+        </Card>
+
+        <Card>
+          <CardLabel label="Informations" />
+          <div className="px-4 pb-4 space-y-3">
+            <Field label="Nom d'affichage" value={profileForm.displayName} onChange={v => setProfileForm(f => ({ ...f, displayName: v }))} placeholder="Votre nom" />
+            <Field label="Nom d'utilisateur" value={profileForm.username} onChange={v => setProfileForm(f => ({ ...f, username: v }))} placeholder="pseudo" />
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-widest text-[#e8e8f0]/30 mb-1.5">Bio</label>
+              <textarea value={profileForm.bio} onChange={e => setProfileForm(f => ({ ...f, bio: e.target.value }))} placeholder="Parlez de vous…" rows={3} maxLength={150}
+                className="w-full px-4 py-3 rounded-xl text-sm resize-none"
+                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "#e8e8f0", outline: "none" }}
+                onFocus={e => { e.target.style.borderColor = "rgba(232,16,42,0.45)"; }}
+                onBlur={e => { e.target.style.borderColor = "rgba(255,255,255,0.08)"; }}
+              />
+              <p className="text-[10px] text-[#e8e8f0]/22 mt-1 text-right">{profileForm.bio.length}/150</p>
+            </div>
+            <Field label="Lien / Site web" value={profileForm.website} onChange={v => setProfileForm(f => ({ ...f, website: v }))} placeholder="https://votre-site.com" type="url" />
+          </div>
+        </Card>
+        <SaveBtn label="Sauvegarder le profil" onClick={saveProfile} color="#00c8ff" />
+      </div>
+    );
+
+    if (section === "account") return (
+      <div className="space-y-4">
+        <Card>
+          <CardLabel label="Informations du compte" />
+          <div className="px-4 pb-4 space-y-3">
+            <Field label="Adresse email" value={accountForm.email} onChange={v => setAccountForm(f => ({ ...f, email: v }))} type="email" placeholder="vous@exemple.com" />
+            <Field label="Téléphone" value={accountForm.phone} onChange={v => setAccountForm(f => ({ ...f, phone: v }))} type="tel" placeholder="+33 6 12 34 56 78" />
+            <Field label="Date de naissance" value={accountForm.birthday} onChange={v => setAccountForm(f => ({ ...f, birthday: v }))} type="date" />
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-widest text-[#e8e8f0]/30 mb-1.5">Genre</label>
+              <select value={accountForm.gender} onChange={e => setAccountForm(f => ({ ...f, gender: e.target.value }))} className="w-full px-4 py-3 rounded-xl text-sm" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "#e8e8f0", outline: "none" }}>
+                <option value="">Préfère ne pas préciser</option>
+                <option value="homme">Homme</option>
+                <option value="femme">Femme</option>
+                <option value="autre">Autre</option>
+              </select>
+            </div>
+          </div>
+        </Card>
+        <SaveBtn label="Sauvegarder le compte" onClick={saveAccount} color="#9900ff" />
+        <Card>
+          <CardLabel label="Actions du compte" />
+          <Row icon={<Download className="w-4 h-4" />} label="Télécharger mes données" sublabel="Archive de toutes vos données PlayQuest" onClick={() => toast({ title: "Export lancé", description: "Vos données seront envoyées par email sous 24h." })} color="#00c8ff" />
+          <Row icon={<Trash2 className="w-4 h-4" />} label="Supprimer le compte" sublabel="Action irréversible — tous vos posts seront supprimés" onClick={handleDeleteAccount} danger />
+        </Card>
+      </div>
+    );
+
+    if (section === "privacy") return (
+      <div className="space-y-4">
+        <Card>
+          <CardLabel label="Visibilité du compte" />
+          <Row icon={<Lock className="w-4 h-4" />} label="Compte privé" sublabel={settings.privateAccount ? "Seuls vos abonnés voient vos posts" : "Tout le monde peut voir vos posts"} color="#e8102a" right={<Toggle checked={settings.privateAccount} onChange={v => set("privateAccount", v)} />} />
+          <Row icon={<Activity className="w-4 h-4" />} label="Statut d'activité" sublabel="Afficher quand vous êtes en ligne" color="#e8102a" right={<Toggle checked={settings.showActivity} onChange={v => set("showActivity", v)} />} />
+        </Card>
+        <Card>
+          <CardLabel label="Interactions" />
+          <Row icon={<AtSign className="w-4 h-4" />} label="Autoriser les mentions" sublabel="N'importe qui peut vous mentionner" color="#e8102a" right={<Toggle checked={settings.allowMentions} onChange={v => set("allowMentions", v)} />} />
+          <Row icon={<Users className="w-4 h-4" />} label="Autoriser les tags" sublabel="N'importe qui peut vous tagger" color="#e8102a" right={<Toggle checked={settings.allowTags} onChange={v => set("allowTags", v)} />} />
+          <Row icon={<Heart className="w-4 h-4" />} label="Afficher le nombre de likes" sublabel="Visible sur vos publications" color="#e8102a" right={<Toggle checked={settings.showLikes} onChange={v => set("showLikes", v)} />} />
+        </Card>
+      </div>
+    );
+
+    if (section === "notifications") return (
+      <div className="space-y-4">
+        <Card>
+          <CardLabel label="Général" />
+          <Row icon={<Bell className="w-4 h-4" />} label="Notifications push" sublabel="Activer toutes les notifications" color="#ff9900" right={<Toggle checked={settings.notifPush} onChange={v => set("notifPush", v)} color="#ff9900" />} />
+        </Card>
+        <Card>
+          <CardLabel label="Interactions" />
+          <Row icon={<Heart className="w-4 h-4" />} label="Likes" sublabel="Quelqu'un aime votre publication" color="#ff9900" right={<Toggle checked={settings.notifLikes} onChange={v => set("notifLikes", v)} color="#ff9900" disabled={!settings.notifPush} />} />
+          <Row icon={<MessageCircle className="w-4 h-4" />} label="Commentaires" sublabel="Commentaires sur vos posts" color="#ff9900" right={<Toggle checked={settings.notifComments} onChange={v => set("notifComments", v)} color="#ff9900" disabled={!settings.notifPush} />} />
+          <Row icon={<UserPlus className="w-4 h-4" />} label="Nouveaux abonnés" sublabel="Quelqu'un vous suit" color="#ff9900" right={<Toggle checked={settings.notifFollows} onChange={v => set("notifFollows", v)} color="#ff9900" disabled={!settings.notifPush} />} />
+          <Row icon={<AtSign className="w-4 h-4" />} label="Mentions" sublabel="Quand on vous mentionne" color="#ff9900" right={<Toggle checked={settings.notifMentions} onChange={v => set("notifMentions", v)} color="#ff9900" disabled={!settings.notifPush} />} />
+        </Card>
+        <Card>
+          <CardLabel label="Messages & Stories" />
+          <Row icon={<MessageCircle className="w-4 h-4" />} label="Messages privés" sublabel="Nouveaux messages reçus" color="#ff9900" right={<Toggle checked={settings.notifMessages} onChange={v => set("notifMessages", v)} color="#ff9900" disabled={!settings.notifPush} />} />
+          <Row icon={<Film className="w-4 h-4" />} label="Nouvelles stories" sublabel="Quand quelqu'un poste une story" color="#ff9900" right={<Toggle checked={settings.notifStories} onChange={v => set("notifStories", v)} color="#ff9900" disabled={!settings.notifPush} />} />
+        </Card>
+      </div>
+    );
+
+    if (section === "security") return (
+      <div className="space-y-4">
+        <Card>
+          <CardLabel label="Changer le mot de passe" />
+          <div className="px-4 pb-4 space-y-3">
+            <Field label="Mot de passe actuel" value={pwdForm.old} onChange={v => { setPwdForm(f => ({ ...f, old: v })); setPwdError(""); setPwdSuccess(false); }} type="password" placeholder="••••••••" />
+            <Field label="Nouveau mot de passe" value={pwdForm.new1} onChange={v => { setPwdForm(f => ({ ...f, new1: v })); setPwdError(""); }} type="password" placeholder="••••••••" />
+            <Field label="Confirmer le nouveau" value={pwdForm.new2} onChange={v => { setPwdForm(f => ({ ...f, new2: v })); setPwdError(""); }} type="password" placeholder="••••••••" />
+            <AnimatePresence>
+              {pwdError && (
+                <motion.div key="err" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="flex items-center gap-2 text-xs text-[#e8102a] px-3 py-2.5 rounded-xl" style={{ background: "rgba(232,16,42,0.08)", border: "1px solid rgba(232,16,42,0.2)" }}>
+                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" /> {pwdError}
+                </motion.div>
+              )}
+              {pwdSuccess && (
+                <motion.div key="ok" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="flex items-center gap-2 text-xs px-3 py-2.5 rounded-xl" style={{ color: "#39ff14", background: "rgba(57,255,20,0.08)", border: "1px solid rgba(57,255,20,0.2)" }}>
+                  <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" /> Mot de passe changé avec succès !
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={changePassword} className="w-full py-3.5 rounded-xl text-sm font-bold" style={{ background: "linear-gradient(135deg,#39ff14,#00cc00)", boxShadow: "0 0 20px rgba(57,255,20,0.3)", color: "#000" }}>
+              Changer le mot de passe
+            </motion.button>
+          </div>
+        </Card>
+        <Card>
+          <CardLabel label="Authentification à deux facteurs" />
+          <Row icon={<Smartphone className="w-4 h-4" />} label="Activer la 2FA" sublabel={settings.twoFAEnabled ? "✓ Compte sécurisé par 2FA" : "Ajouter une couche de sécurité"} color="#39ff14"
+            right={<Toggle checked={settings.twoFAEnabled} onChange={v => { set("twoFAEnabled", v); toast({ title: v ? "✓ 2FA activée" : "2FA désactivée", description: v ? "Votre compte est mieux protégé." : "Authentification à 2 facteurs désactivée." }); }} color="#39ff14" />} />
+          <Row icon={<AlertTriangle className="w-4 h-4" />} label="Alertes de connexion" sublabel="Notification à chaque nouvelle connexion" color="#39ff14"
+            right={<Toggle checked={settings.loginAlerts} onChange={v => { set("loginAlerts", v); toast({ title: v ? "✓ Alertes activées" : "Alertes désactivées" }); }} color="#39ff14" />} />
+        </Card>
+        <Card>
+          <CardLabel label="Historique de sécurité" />
+          <Row icon={<Activity className="w-4 h-4" />} label="Activité de connexion" sublabel="Voir les connexions récentes" onClick={() => toast({ title: "Activité récente", description: `Dernière connexion : ${new Date().toLocaleDateString("fr-FR")} depuis navigateur web.` })} color="#39ff14" />
+          <Row icon={<Key className="w-4 h-4" />} label="Applications connectées" sublabel="Aucune app tierce connectée" onClick={() => toast({ title: "Applications connectées", description: "Aucune application tierce n'a accès à votre compte." })} color="#39ff14" />
+        </Card>
+      </div>
+    );
+
+    if (section === "appearance") return (
+      <div className="space-y-4">
+        <Card>
+          <CardLabel label="Thème" />
+          <Row icon={<Moon className="w-4 h-4" />} label="Mode sombre" sublabel={settings.darkMode ? "Interface cyberpunk noire activée" : "Mode clair (non recommandé pour PlayQuest)"} color="#9900ff"
+            right={<Toggle checked={settings.darkMode} onChange={v => { set("darkMode", v); toast({ title: v ? "Mode sombre activé" : "Mode clair activé", description: "Le changement sera visible au prochain rechargement." }); }} color="#9900ff" />} />
+        </Card>
+        <Card>
+          <CardLabel label="Langue" />
+          <Row icon={<Languages className="w-4 h-4" />} label="Français" sublabel="Langue actuelle de l'interface" color="#9900ff" right={<span className="text-xs font-bold" style={{ color: "#9900ff" }}>✓ Actif</span>} />
+          <Row icon={<Globe className="w-4 h-4" />} label="English" sublabel="Interface en anglais (bientôt)" color="#9900ff" onClick={() => toast({ title: "Langue", description: "L'anglais sera disponible dans une prochaine version." })} />
+        </Card>
+      </div>
+    );
+
+    if (section === "help") return (
+      <div className="space-y-4">
+        <Card>
+          <Row icon={<AlertTriangle className="w-4 h-4" />} label="Signaler un problème" sublabel="Nous aider à améliorer PlayQuest" onClick={() => toast({ title: "Signalement envoyé", description: "Merci ! Notre équipe va analyser votre rapport sous 48h." })} color="#e8102a" />
+          <Row icon={<HelpCircle className="w-4 h-4" />} label="Centre d'aide" sublabel="FAQ et guides d'utilisation" onClick={() => toast({ title: "Centre d'aide", description: "Disponible sur play-quest-reseauxsociaux.vercel.app" })} color="#00c8ff" />
+          <Row icon={<Mail className="w-4 h-4" />} label="Contacter le support" sublabel="varnoxnovark@gmail.com" onClick={() => window.open("mailto:varnoxnovark@gmail.com", "_blank")} color="#00c8ff" />
+        </Card>
+        <Card>
+          <Row icon={<Globe className="w-4 h-4" />} label="Politique de confidentialité" onClick={() => toast({ title: "Politique", description: "Vos données sont stockées uniquement sur votre appareil via localStorage." })} color="#00c8ff" />
+          <Row icon={<Info className="w-4 h-4" />} label="Conditions d'utilisation" onClick={() => toast({ title: "CGU PlayQuest 2026", description: "Usage personnel uniquement. Contenu légal requis. Propriété de varnox•prime." })} color="#00c8ff" />
+        </Card>
+      </div>
+    );
+
+    if (section === "about") return (
+      <div className="space-y-4">
+        <Card>
+          <div className="p-8 text-center">
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: "linear-gradient(135deg,#e8102a,#c8001f)", boxShadow: "0 0 32px rgba(232,16,42,0.5)" }}>
+              <span className="text-2xl font-black text-white" style={{ fontFamily: "'Space Grotesk',sans-serif" }}>P</span>
+            </div>
+            <h3 className="text-2xl font-black mb-1" style={{ fontFamily: "'Space Grotesk',sans-serif", background: "linear-gradient(135deg,#e8102a,#00c8ff)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>PlayQuest</h3>
+            <p className="text-sm text-[#e8e8f0]/35 mb-0.5">Version 2.0.0 — Juillet 2026</p>
+            <p className="text-xs" style={{ color: "#00c8ff" }}>by varnox•prime</p>
+          </div>
+        </Card>
+        <Card>
+          <Row icon={<Info className="w-4 h-4" />} label="Version" sublabel="2.0.0 (Build 2026.07)" color="#e8e8f0" right={<span className="text-xs text-[#e8e8f0]/30">2.0.0</span>} />
+          <Row icon={<Globe className="w-4 h-4" />} label="Site web" sublabel="play-quest-reseauxsociaux.vercel.app" onClick={() => window.open("https://play-quest-reseauxsociaux.vercel.app", "_blank")} color="#00c8ff" />
+          <Row icon={<Heart className="w-4 h-4" />} label="Développé avec ❤️" sublabel="React + Vite + Framer Motion + TailwindCSS v4" color="#e8102a" right={<span className="text-xs text-[#e8102a]/50">varnox•prime</span>} />
+        </Card>
+        <p className="text-center text-[10px] text-[#e8e8f0]/15 pb-2">✦ 2026 PlayQuest by varnox•prime</p>
+      </div>
+    );
+
+    return null;
+  };
 
   return (
     <Layout>
-      <div className="max-w-2xl mx-auto px-4 py-6 pb-24">
+      <div className="min-h-screen" style={{ background: "linear-gradient(180deg,#0a0a0f 0%,#0d0d18 100%)" }}>
+        <div className="max-w-2xl mx-auto px-4 pt-6 pb-28">
+          <AnimatePresence mode="wait">
+            {!section ? (
+              <motion.div key="menu" initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} transition={{ duration: 0.22 }}>
+                <div className="mb-6">
+                  <h1 className="text-2xl font-black" style={{ fontFamily: "'Space Grotesk',sans-serif", background: "linear-gradient(135deg,#e8102a,#00c8ff)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Paramètres</h1>
+                  <p className="text-[#e8e8f0]/32 text-xs mt-0.5">Compte & préférences</p>
+                </div>
 
-        {/* Header with back button */}
-        <div className="flex items-center gap-3 mb-6">
-          {section !== "main" && (
-            <motion.button whileTap={{ scale: 0.93 }} onClick={goBack} className="w-8 h-8 flex items-center justify-center rounded-xl" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)" }}>
-              <ChevronRight className="w-4 h-4 text-[#e8e8f0]/60 rotate-180" />
-            </motion.button>
-          )}
-          <h1 className="text-2xl font-bold gradient-text" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-            {section === "main" ? "Paramètres" :
-             section === "profile" ? "Modifier le profil" :
-             section === "account" ? "Compte" :
-             section === "privacy" ? "Confidentialité" :
-             section === "notifications" ? "Notifications" :
-             section === "security" ? "Sécurité" :
-             section === "appearance" ? "Apparence" :
-             section === "help" ? "Aide & Support" :
-             "À propos"}
-          </h1>
-        </div>
-
-        <AnimatePresence mode="wait">
-
-          {/* ── MAIN LIST ── */}
-          {section === "main" && (
-            <motion.div key="main" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="space-y-3">
-              {/* User card */}
-              <motion.div whileHover={{ scale: 1.01 }} onClick={() => setSection("profile")} className="p-4 rounded-2xl cursor-pointer flex items-center gap-4 mb-2" style={{ background: "rgba(17,17,24,0.8)", border: "1px solid rgba(0,200,255,0.08)" }}>
-                <div className="relative">
-                  <div className="p-0.5 rounded-2xl" style={{ background: `linear-gradient(135deg,${currentUser.avatarColor},#00c8ff)` }}>
-                    <UserAvatar user={currentUser} size="lg" square style={{ boxShadow: "none" }} />
+                <motion.div whileHover={{ scale: 1.01 }} onClick={() => setSection("profile")} className="flex items-center gap-4 p-4 rounded-2xl mb-5 cursor-pointer" style={{ background: "rgba(14,14,22,0.92)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                  {avatarUrl
+                    ? <img src={avatarUrl} className="w-14 h-14 rounded-full object-cover" style={{ border: `2px solid ${currentUser?.avatarColor || "#e8102a"}` }} alt="" />
+                    : <div className="w-14 h-14 rounded-full flex items-center justify-center text-lg font-bold text-white" style={{ background: currentUser?.avatarColor || "#e8102a", boxShadow: `0 0 20px ${currentUser?.avatarColor || "#e8102a"}50` }}>{initials}</div>
+                  }
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-[#e8e8f0] truncate">{currentUser?.displayName || currentUser?.username}</p>
+                    <p className="text-sm text-[#e8e8f0]/38">@{currentUser?.username}</p>
+                    {currentUser?.bio && <p className="text-xs text-[#e8e8f0]/28 mt-0.5 truncate">{currentUser.bio}</p>}
                   </div>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-[#e8e8f0]" style={{ fontFamily: "'Space Grotesk',sans-serif" }}>@{currentUser.username}</p>
-                  <p className="text-xs text-[#e8e8f0]/45 mt-0.5 truncate">{currentUser.bio || "Aucune biographie"}</p>
-                  <p className="text-[11px] text-[#00c8ff]/60 mt-1">Modifier le profil</p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-[#e8e8f0]/25 flex-shrink-0" />
+                  <div className="flex items-center gap-1 text-xs font-semibold flex-shrink-0" style={{ color: "#00c8ff" }}>
+                    <Edit3 className="w-3.5 h-3.5" /> Modifier
+                  </div>
+                </motion.div>
+
+                <Card>
+                  {SECTIONS.slice(0, 6).map(s => (
+                    <Row key={s.id} icon={s.icon} label={s.label} onClick={() => setSection(s.id)} color={s.color} />
+                  ))}
+                </Card>
+                <Card>
+                  {SECTIONS.slice(6).map(s => (
+                    <Row key={s.id} icon={s.icon} label={s.label} onClick={() => setSection(s.id)} color={s.color} />
+                  ))}
+                </Card>
+                <Card>
+                  <Row icon={<LogOut className="w-4 h-4" />} label="Se déconnecter" sublabel={`Connecté en tant que @${currentUser?.username}`} onClick={() => { logout(); navigate("/login"); }} danger />
+                </Card>
               </motion.div>
-
-              <div className="space-y-1.5">
-                <p className="text-[10px] text-[#e8e8f0]/30 uppercase tracking-wider px-1 mb-1">Compte</p>
-                <SettingRow icon={User} label="Modifier le profil" sub="Photo, bio, username" color="#00c8ff" onClick={() => setSection("profile")} />
-                <SettingRow icon={Users} label="Compte" sub="Email, téléphone, date de naissance" color="#e8102a" onClick={() => setSection("account")} />
-                <SettingRow icon={Bookmark} label="Sauvegardés" sub="Vos posts sauvegardés" color="#ff9900" onClick={() => toast({ title: "Sauvegardés", description: "Fonctionnalité bientôt disponible" })} />
-                <SettingRow icon={Link2} label="Lien du profil" sub={`playquest.app/@${currentUser.username}`} color="#39ff14" onClick={copyProfileLink} rightEl={copied ? <CheckCircle2 className="w-4 h-4 text-[#39ff14]" /> : <Copy className="w-4 h-4 text-[#e8e8f0]/25" />} />
-                <SettingRow icon={QrCode} label="QR Code" sub="Votre code QR PlayQuest" color="#9900ff" onClick={() => toast({ title: "QR Code", description: "Fonctionnalité bientôt disponible" })} />
-              </div>
-
-              <div className="space-y-1.5">
-                <p className="text-[10px] text-[#e8e8f0]/30 uppercase tracking-wider px-1 mb-1">Préférences</p>
-                <SettingRow icon={Bell} label="Notifications" sub="Push, email, activité" color="#e8102a" onClick={() => setSection("notifications")} />
-                <SettingRow icon={Shield} label="Confidentialité" sub="Compte privé, story, mentions" color="#00c8ff" onClick={() => setSection("privacy")} />
-                <SettingRow icon={Lock} label="Sécurité" sub="Mot de passe, 2FA, connexions" color="#9900ff" onClick={() => setSection("security")} />
-                <SettingRow icon={Moon} label="Apparence" sub="Mode sombre, thème, langue" color="#ff9900" onClick={() => setSection("appearance")} />
-              </div>
-
-              <div className="space-y-1.5">
-                <p className="text-[10px] text-[#e8e8f0]/30 uppercase tracking-wider px-1 mb-1">Aide</p>
-                <SettingRow icon={HelpCircle} label="Centre d'aide" sub="FAQ, assistance" color="#39ff14" onClick={() => setSection("help")} />
-                <SettingRow icon={AlertTriangle} label="Signaler un problème" sub="Nous contacter" color="#ff9900" onClick={() => toast({ title: "Merci !", description: "Votre signalement a été envoyé." })} />
-                <SettingRow icon={Info} label="À propos de PlayQuest" sub="Version, conditions, politique" color="#00c8ff" onClick={() => setSection("about")} />
-              </div>
-
-              <div className="pt-1">
-                <SettingRow icon={LogOut} label="Se déconnecter" color="#e8102a" danger onClick={logout} />
-              </div>
-
-              <p className="text-center text-[10px] text-[#e8e8f0]/18 pt-2">✦ PlayQuest v2.0.0 by varnox•prime</p>
-            </motion.div>
-          )}
-
-          {/* ── PROFILE ── */}
-          {section === "profile" && (
-            <motion.div key="profile" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
-              <div className="p-6 rounded-2xl" style={{ background: "rgba(17,17,24,0.8)", border: "1px solid rgba(0,200,255,0.08)" }}>
-                {/* Avatar */}
-                <div className="flex items-center gap-5 mb-6">
-                  <div className="relative">
-                    <div className="p-0.5 rounded-2xl" style={{ background: `linear-gradient(135deg,${selectedColor},#00c8ff)`, boxShadow: `0 0 24px ${selectedColor}60` }}>
-                      <UserAvatar user={previewUser} size="xl" square style={{ boxShadow: "none" }} />
-                    </div>
-                    <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => photoInputRef.current?.click()} disabled={uploadingPhoto} className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "linear-gradient(135deg,#e8102a,#c8001f)", boxShadow: "0 0 14px rgba(232,16,42,0.5)", border: "2px solid #06060d" }}>
-                      {uploadingPhoto ? <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : <Camera className="w-3.5 h-3.5 text-white" />}
-                    </motion.button>
-                    <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoSelect} />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-semibold text-[#e8e8f0]">@{username}</p>
-                    <p className="text-xs text-[#e8e8f0]/40 mt-0.5">Photo de profil</p>
-                    <div className="flex gap-2 mt-2">
-                      <button onClick={() => photoInputRef.current?.click()} className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{ background: "rgba(0,200,255,0.08)", color: "#00c8ff", border: "1px solid rgba(0,200,255,0.2)" }}>
-                        {avatarUrl ? "Changer" : "Ajouter"}
-                      </button>
-                      {avatarUrl && (
-                        <button onClick={() => setAvatarUrl(undefined)} className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{ background: "rgba(232,16,42,0.08)", color: "#e8102a", border: "1px solid rgba(232,16,42,0.2)" }}>
-                          Supprimer
-                        </button>
-                      )}
-                    </div>
-                  </div>
+            ) : (
+              <motion.div key={section} initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 16 }} transition={{ duration: 0.22 }}>
+                <div className="flex items-center gap-3 mb-6">
+                  <motion.button whileTap={{ scale: 0.9 }} onClick={() => { setSection(null); setPwdError(""); setPwdSuccess(false); }} className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                    <ChevronRight className="w-5 h-5 text-[#e8e8f0]/50 rotate-180" />
+                  </motion.button>
+                  <h1 className="text-lg font-black" style={{ fontFamily: "'Space Grotesk',sans-serif", background: "linear-gradient(135deg,#e8102a,#00c8ff)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                    {SECTIONS.find(s => s.id === section)?.label}
+                  </h1>
                 </div>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-[10px] font-medium text-[#e8e8f0]/50 mb-1.5 uppercase tracking-wider">Nom d'utilisateur</label>
-                    <input value={username} onChange={e => setUsername(e.target.value)} className={inputCls} style={inputStyle} />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-medium text-[#e8e8f0]/50 mb-1.5 uppercase tracking-wider">Bio</label>
-                    <textarea value={bio} onChange={e => setBio(e.target.value)} rows={3} placeholder="Parlez-nous de vous…" className="w-full px-4 py-3 rounded-xl text-sm outline-none resize-none text-[#e8e8f0] placeholder:text-[#e8e8f0]/25" style={inputStyle} />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-medium text-[#e8e8f0]/50 mb-1.5 uppercase tracking-wider">Lien / Site web</label>
-                    <input value={website} onChange={e => setWebsite(e.target.value)} placeholder="https://…" className={inputCls} style={inputStyle} />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-medium text-[#e8e8f0]/50 mb-2 uppercase tracking-wider">Couleur de profil</label>
-                    <div className="flex gap-2 flex-wrap">
-                      {AVATAR_COLORS.map(color => (
-                        <button key={color} onClick={() => setSelectedColor(color)} className="w-8 h-8 rounded-full transition-all" style={{ backgroundColor: color, boxShadow: selectedColor === color ? `0 0 12px ${color},0 0 24px ${color}50` : "none", transform: selectedColor === color ? "scale(1.2)" : "scale(1)", border: selectedColor === color ? "2px solid white" : "2px solid transparent" }} />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={saveProfile} disabled={saving} className="w-full mt-6 py-3 rounded-xl font-semibold text-white flex items-center justify-center gap-2" style={{ background: saving ? "rgba(232,16,42,0.5)" : "linear-gradient(135deg,#e8102a,#c8001f)", boxShadow: saving ? "none" : "0 0 16px rgba(232,16,42,0.4)" }}>
-                  <Save className="w-4 h-4" />{saving ? "Sauvegarde…" : "Enregistrer les modifications"}
-                </motion.button>
-              </div>
-            </motion.div>
-          )}
-
-          {/* ── ACCOUNT ── */}
-          {section === "account" && (
-            <motion.div key="account" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-2">
-              {[
-                { icon: AtSign, label: "Nom d'utilisateur", sub: `@${currentUser.username}`, color: "#00c8ff" },
-                { icon: Globe, label: "Adresse email", sub: currentUser.email, color: "#e8102a" },
-                { icon: Smartphone, label: "Numéro de téléphone", sub: "Non configuré", color: "#ff9900" },
-                { icon: User, label: "Nom complet", sub: "Non configuré", color: "#9900ff" },
-                { icon: Star, label: "Genre", sub: "Non précisé", color: "#39ff14" },
-                { icon: CreditCard, label: "Date de naissance", sub: "Non configurée", color: "#00c8ff" },
-                { icon: Download, label: "Télécharger mes données", sub: "Exporter votre activité", color: "#ff9900" },
-                { icon: Trash2, label: "Désactiver le compte", sub: "Temporairement désactiver", color: "#e8102a", danger: true },
-              ].map(({ icon, label, sub, color, danger }) => (
-                <SettingRow key={label} icon={icon} label={label} sub={sub} color={color} danger={danger} onClick={() => toast({ title: label, description: "Fonctionnalité disponible prochainement" })} />
-              ))}
-            </motion.div>
-          )}
-
-          {/* ── PRIVACY ── */}
-          {section === "privacy" && (
-            <motion.div key="privacy" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-3">
-              <div className="p-5 rounded-2xl space-y-4" style={{ background: "rgba(17,17,24,0.8)", border: "1px solid rgba(0,200,255,0.08)" }}>
-                <p className="text-xs font-semibold text-[#e8e8f0]/50 uppercase tracking-wider">Compte</p>
-                {[
-                  { label: "Compte privé", sub: "Seuls vos abonnés voient vos posts", v: privateAccount, set: setPrivateAccount },
-                  { label: "Statut d'activité", sub: "Montrer quand vous êtes en ligne", v: activityStatus, set: setActivityStatus },
-                  { label: "Réponses aux stories", sub: "Qui peut répondre à vos stories", v: storyReplies, set: setStoryReplies },
-                  { label: "Autoriser les mentions", sub: "Qui peut vous mentionner", v: allowMentions, set: setAllowMentions },
-                  { label: "Autoriser les tags", sub: "Qui peut vous tagger dans des posts", v: allowTags, set: setAllowTags },
-                  { label: "Afficher le nombre de likes", sub: "Sur vos publications", v: showLikeCount, set: setShowLikeCount },
-                ].map(({ label, sub, v, set }) => (
-                  <div key={label} className="flex items-center justify-between py-2 border-b last:border-0" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
-                    <div>
-                      <p className="text-sm text-[#e8e8f0]">{label}</p>
-                      <p className="text-[11px] text-[#e8e8f0]/38 mt-0.5">{sub}</p>
-                    </div>
-                    <Toggle on={v} onChange={set} />
-                  </div>
-                ))}
-              </div>
-              <SettingRow icon={Users} label="Liste des personnes bloquées" sub="Gérer vos blocages" color="#e8102a" onClick={() => toast({ title: "Blocages", description: "Aucun compte bloqué" })} />
-              <SettingRow icon={Eye} label="Posts masqués" sub="Posts que vous avez masqués" color="#9900ff" onClick={() => toast({ title: "Masqués", description: "Aucun post masqué" })} />
-            </motion.div>
-          )}
-
-          {/* ── NOTIFICATIONS ── */}
-          {section === "notifications" && (
-            <motion.div key="notifs" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-3">
-              <div className="p-5 rounded-2xl space-y-1" style={{ background: "rgba(17,17,24,0.8)", border: "1px solid rgba(0,200,255,0.08)" }}>
-                <p className="text-xs font-semibold text-[#e8e8f0]/50 uppercase tracking-wider mb-3">Push notifications</p>
-                {[
-                  { label: "Notifications push", sub: "Activer toutes les notifs", v: pushEnabled, set: setPushEnabled },
-                ].map(({ label, sub, v, set }) => (
-                  <div key={label} className="flex items-center justify-between py-2">
-                    <div>
-                      <p className="text-sm text-[#e8e8f0]">{label}</p>
-                      <p className="text-[11px] text-[#e8e8f0]/38 mt-0.5">{sub}</p>
-                    </div>
-                    <Toggle on={v} onChange={set} />
-                  </div>
-                ))}
-              </div>
-              <div className="p-5 rounded-2xl space-y-0" style={{ background: "rgba(17,17,24,0.8)", border: "1px solid rgba(0,200,255,0.08)" }}>
-                <p className="text-xs font-semibold text-[#e8e8f0]/50 uppercase tracking-wider mb-3">Activité</p>
-                {[
-                  { icon: Heart, label: "J'aimes", sub: "Quand quelqu'un aime votre post", v: notifLikes, set: setNotifLikes, color: "#e8102a" },
-                  { icon: MessageCircle, label: "Commentaires", sub: "Nouveaux commentaires", v: notifComments, set: setNotifComments, color: "#00c8ff" },
-                  { icon: UserPlus, label: "Abonnements", sub: "Nouveaux abonnés", v: notifFollows, set: setNotifFollows, color: "#39ff14" },
-                  { icon: AtSign, label: "Mentions", sub: "@mentions dans les posts", v: notifMentions, set: setNotifMentions, color: "#ff9900" },
-                  { icon: MessageCircle, label: "Messages directs", sub: "Nouveaux messages", v: notifDMs, set: setNotifDMs, color: "#9900ff" },
-                  { icon: Volume2, label: "Stories", sub: "Réponses à vos stories", v: notifStories, set: setNotifStories, color: "#00c8ff" },
-                  { icon: Volume2, label: "Live & Vidéo", sub: "Quand quelqu'un commence un live", v: notifLive, set: setNotifLive, color: "#e8102a" },
-                  { icon: Globe, label: "Notifications email", sub: "Recevoir des emails", v: notifEmail, set: setNotifEmail, color: "#ff9900" },
-                ].map(({ icon: Icon, label, sub, v, set, color }) => (
-                  <div key={label} className="flex items-center gap-3 py-3 border-b last:border-0" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
-                    <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${color}15` }}>
-                      <Icon className="w-3.5 h-3.5" style={{ color }} />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm text-[#e8e8f0]">{label}</p>
-                      <p className="text-[11px] text-[#e8e8f0]/38">{sub}</p>
-                    </div>
-                    <Toggle on={v} onChange={set} />
-                  </div>
-                ))}
-              </div>
-            </motion.div>
-          )}
-
-          {/* ── SECURITY ── */}
-          {section === "security" && (
-            <motion.div key="security" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-3">
-              <div className="p-5 rounded-2xl space-y-4" style={{ background: "rgba(17,17,24,0.8)", border: "1px solid rgba(0,200,255,0.08)" }}>
-                <p className="text-xs font-semibold text-[#e8e8f0]/50 uppercase tracking-wider">Connexion</p>
-                {[
-                  { label: "Connexion sauvegardée", sub: "Rester connecté automatiquement", v: savedLogin, set: setSavedLogin },
-                  { label: "Alertes de connexion", sub: "Notifier lors d'une nouvelle connexion", v: loginAlerts, set: setLoginAlerts },
-                ].map(({ label, sub, v, set }) => (
-                  <div key={label} className="flex items-center justify-between py-1">
-                    <div>
-                      <p className="text-sm text-[#e8e8f0]">{label}</p>
-                      <p className="text-[11px] text-[#e8e8f0]/38 mt-0.5">{sub}</p>
-                    </div>
-                    <Toggle on={v} onChange={set} />
-                  </div>
-                ))}
-              </div>
-              <SettingRow icon={Lock} label="Changer le mot de passe" sub="Modifier votre mot de passe actuel" color="#e8102a" onClick={() => toast({ title: "Mot de passe", description: "Fonctionnalité bientôt disponible" })} />
-              <SettingRow icon={Smartphone} label="Authentification à deux facteurs" sub={twoFA ? "Activée" : "Non activée"} color="#9900ff" onClick={() => { setTwoFA(!twoFA); toast({ title: twoFA ? "2FA désactivée" : "2FA activée", description: "Votre sécurité a été mise à jour." }); }} rightEl={<Toggle on={twoFA} onChange={setTwoFA} />} />
-              <SettingRow icon={Globe} label="Activité de connexion" sub="Voir les connexions récentes" color="#00c8ff" onClick={() => toast({ title: "Activité", description: "Aucune connexion suspecte détectée ✦" })} />
-            </motion.div>
-          )}
-
-          {/* ── APPEARANCE ── */}
-          {section === "appearance" && (
-            <motion.div key="appearance" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-3">
-              <div className="p-5 rounded-2xl" style={{ background: "rgba(17,17,24,0.8)", border: "1px solid rgba(0,200,255,0.08)" }}>
-                <div className="flex items-center justify-between py-2">
-                  <div>
-                    <p className="text-sm text-[#e8e8f0]">Mode sombre</p>
-                    <p className="text-[11px] text-[#e8e8f0]/38 mt-0.5">Interface noire cyberpunk</p>
-                  </div>
-                  <Toggle on={darkMode} onChange={setDarkMode} />
-                </div>
-              </div>
-              <SettingRow icon={Globe} label="Langue de l'application" sub="Français" color="#00c8ff" onClick={() => toast({ title: "Langue", description: "PlayQuest est en français 🇫🇷" })} />
-              <SettingRow icon={Smartphone} label="Format d'affichage" sub="Grille, liste ou compact" color="#9900ff" onClick={() => toast({ title: "Format", description: "Mode grille activé" })} />
-            </motion.div>
-          )}
-
-          {/* ── HELP ── */}
-          {section === "help" && (
-            <motion.div key="help" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-2">
-              {[
-                { icon: HelpCircle, label: "Centre d'aide", sub: "Questions fréquentes", color: "#39ff14" },
-                { icon: AlertTriangle, label: "Signaler un problème", sub: "Bug ou comportement inapproprié", color: "#ff9900" },
-                { icon: MessageCircle, label: "Nous contacter", sub: "Envoyer un message à l'équipe", color: "#00c8ff" },
-                { icon: Star, label: "Évaluer l'application", sub: "Votre avis compte", color: "#e8102a" },
-              ].map(({ icon, label, sub, color }) => (
-                <SettingRow key={label} icon={icon} label={label} sub={sub} color={color} onClick={() => toast({ title: label, description: "Redirection bientôt disponible" })} />
-              ))}
-            </motion.div>
-          )}
-
-          {/* ── ABOUT ── */}
-          {section === "about" && (
-            <motion.div key="about" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-3">
-              <div className="p-6 rounded-2xl text-center" style={{ background: "rgba(17,17,24,0.8)", border: "1px solid rgba(0,200,255,0.08)" }}>
-                <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3" style={{ background: "linear-gradient(135deg,#e8102a,#c8001f)", boxShadow: "0 0 30px rgba(232,16,42,0.5)" }}>
-                  <span className="text-white font-black text-lg">PQ</span>
-                </div>
-                <p className="font-bold text-[#e8e8f0] text-lg" style={{ fontFamily: "'Space Grotesk',sans-serif" }}>PlayQuest</p>
-                <p className="text-xs text-[#e8e8f0]/35 mt-1">Version 2.0.0</p>
-                <p className="text-xs text-[#00c8ff]/50 mt-1">by varnox•prime</p>
-              </div>
-              {[
-                { icon: Globe, label: "Politique de confidentialité", color: "#00c8ff" },
-                { icon: Info, label: "Conditions d'utilisation", color: "#9900ff" },
-                { icon: Star, label: "Licences open source", color: "#39ff14" },
-                { icon: Shield, label: "Sécurité des données", color: "#e8102a" },
-              ].map(({ icon, label, color }) => (
-                <SettingRow key={label} icon={icon} label={label} color={color} onClick={() => toast({ title: label, description: "Document bientôt disponible" })} />
-              ))}
-            </motion.div>
-          )}
-
-        </AnimatePresence>
+                {renderSection()}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
     </Layout>
   );
