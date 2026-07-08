@@ -57,7 +57,7 @@ export default function AIChatPage() {
   const [isTyping, setIsTyping] = useState(false);
   const [transcript, setTranscript] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const recognitionRef = useRef<any>(null);
 
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   useEffect(scrollToBottom, [messages, isTyping]);
@@ -109,8 +109,8 @@ export default function AIChatPage() {
     recognition.interimResults = true;
     recognition.maxAlternatives = 1;
     recognition.onstart = () => { setIsListening(true); setTranscript(""); window.speechSynthesis.cancel(); };
-    recognition.onresult = (e: SpeechRecognitionEvent) => {
-      const t = Array.from(e.results).map(r => r[0].transcript).join("");
+    recognition.onresult = (e: any) => {
+      const t = Array.from(e.results as any[]).map((r: any) => r[0].transcript).join("");
       setTranscript(t);
       if (e.results[e.results.length - 1].isFinal) {
         setIsListening(false);
